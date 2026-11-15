@@ -19,18 +19,18 @@ _DEBUGGED = False
 def _search(params: dict) -> list[dict]:
     global _DEBUGGED
     last: Exception | None = None
-    for version in ("v4", "v6"):
+    for version in ("v6",):
         try:
-            data = get_json(f"{BASE}/pc/{version}/jobs", headers=HEADERS, params=params)
+            data = get_json(f"{BASE}/pc/{version}/jobs", headers=HEADERS, params=params, retries=3)
         except Exception as e:  # noqa: BLE001
             last = e
             continue
-        items = data.get("stellenangebote") or data.get("jobs") or data.get("ergebnisliste") or []
-        if not _DEBUGGED:
+        items = data.get("ergebnisliste") or data.get("stellenangebote") or []
+        if items and not _DEBUGGED:
             _DEBUGGED = True
-            log(f"  BA {version} response keys: {sorted(data)[:12]}, total={data.get('maxErgebnisse')}")
-        if items:
-            return items
+            first = items[0]
+            log(f"  BA item fields: {sorted(first)}; arbeitsort: {sorted(first.get('arbeitsort') or (first.get('arbeitsorte') or [{}])[0])}")
+        return items
     if last:
         raise last
     return []
@@ -61,17 +61,18 @@ def fetch(cfg: dict, queries: list[str], first_run: bool) -> list[Job]:
             try:
                 items = _search(params)
             except Exception as e:  # noqa: BLE001
-                log(f"  BA query failed ({type(e).__name__})")
+                log(f"  BA query failed ({type(e).__name__}: {str(e)[:80]})")
                 continue
             for it in items:
                 refnr = it.get("refnr") or it.get("referenznummer") or ""
                 if not refnr:
                     continue
-                ort = it.get("arbeitsort") or {}
+                ort = it.get("arbeitsort") or (it.get("arbeitsorte") or [{}])[0] or {}
                 url = it.get("externeUrl") or f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{refnr}"
                 job = Job(
-                    title=it.get("titel") or it.get("beruf") or "",
-                    org=it.get("arbeitgeber") or "",
+                    title=(it.get("titel") or it.get("stellenangebotsTitel") or it.get("stellenbezeichnung")
+                           or it.get("beruf") or ""),
+                    org=it.get("arbeitgeber") or it.get("arbeitgeberName") or it.get("firma") or "",
                     location=" ".join(x for x in (ort.get("plz"), ort.get("ort"), ort.get("land")) if x),
                     url=url,
                     source="Bundesagentur",
@@ -79,7 +80,7 @@ def fetch(cfg: dict, queries: list[str], first_run: bool) -> list[Job]:
                     extra={"refnr": refnr},
                 )
                 jobs.setdefault(job.id, job)
-            time.sleep(0.3)
+            time.sleep(1.0)
     return list(jobs.values())
 
 

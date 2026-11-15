@@ -183,9 +183,6 @@ sites:
   - name: Ärzteblatt
     url: https://aerztestellen.aerzteblatt.de/de/stellen/forschung
     link_pattern: /de/stelle/
-  - name: PraktischArzt
-    url: https://www.praktischarzt.de/jobs/forschung/
-    link_pattern: /job/|/stellenangebot/
   - name: Helios
     url: https://www.helios-gesundheit.de/karriere/stellenangebote/?q=studienkoordination
     link_pattern: /stellenangebote/|/job/

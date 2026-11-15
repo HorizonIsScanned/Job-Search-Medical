@@ -29,7 +29,8 @@ def _search(params: dict) -> list[dict]:
         if items and not _DEBUGGED:
             _DEBUGGED = True
             first = items[0]
-            log(f"  BA item fields: {sorted(first)}; arbeitsort: {sorted(first.get('arbeitsort') or (first.get('arbeitsorte') or [{}])[0])}")
+            loc = (first.get("stellenlokationen") or [{}])[0]
+            log(f"  BA location fields: {sorted(loc)} / {sorted((loc or {}).get('adresse') or {})}")
         return items
     if last:
         raise last
@@ -38,11 +39,14 @@ def _search(params: dict) -> list[dict]:
 
 def _details(refnr: str) -> str:
     enc = base64.b64encode(refnr.encode()).decode()
-    for path in (f"pc/v4/jobdetails/{enc}", f"pc/v2/jobdetails/{enc}"):
+    for path in (f"pc/v4/jobdetails/{enc}", f"pc/v3/jobdetails/{enc}"):
         try:
             d = get_json(f"{BASE}/{path}", headers=HEADERS, retries=0)
-            return clean_text(d.get("stellenbeschreibung") or d.get("stellenangebotsBeschreibung") or "")
-        except Exception:  # noqa: BLE001
+            return clean_text(d.get("stellenangebotsBeschreibung") or d.get("stellenbeschreibung") or "")
+        except Exception as e:  # noqa: BLE001
+            if not _DETAIL_STATS.get("logged"):
+                _DETAIL_STATS["logged"] = 1
+                log(f"  BA detail {path.split('/')[1]} failed ({type(e).__name__}: {str(e)[:60]})")
             continue
     return ""
 
@@ -67,21 +71,31 @@ def fetch(cfg: dict, queries: list[str], first_run: bool) -> list[Job]:
                 refnr = it.get("refnr") or it.get("referenznummer") or ""
                 if not refnr:
                     continue
-                ort = it.get("arbeitsort") or (it.get("arbeitsorte") or [{}])[0] or {}
-                url = it.get("externeUrl") or f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{refnr}"
+                locs = it.get("stellenlokationen") or [it.get("arbeitsort") or {}]
+                parts = []
+                for loc in locs[:3]:
+                    a = (loc or {}).get("adresse") or loc or {}
+                    parts.append(" ".join(str(a.get(k)) for k in ("plz", "ort", "land") if a.get(k)))
+                url = (it.get("externeURL") or it.get("externeUrl")
+                       or f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{refnr}")
+                parttime = any(it.get(k) for k in ("arbeitszeitTeilzeitFlexibel", "arbeitszeitTeilzeitVormittag",
+                                                   "arbeitszeitTeilzeitNachmittag", "arbeitszeitTeilzeitAbend"))
                 job = Job(
-                    title=(it.get("titel") or it.get("stellenangebotsTitel") or it.get("stellenbezeichnung")
-                           or it.get("beruf") or ""),
-                    org=it.get("arbeitgeber") or it.get("arbeitgeberName") or it.get("firma") or "",
-                    location=" ".join(x for x in (ort.get("plz"), ort.get("ort"), ort.get("land")) if x),
+                    title=(it.get("stellenangebotsTitel") or it.get("titel") or it.get("hauptberuf") or it.get("beruf") or ""),
+                    org=it.get("firma") or it.get("arbeitgeber") or "",
+                    location="; ".join(x for x in parts if x),
                     url=url,
                     source="Bundesagentur",
-                    posted=it.get("aktuelleVeroeffentlichungsdatum") or it.get("eintrittsdatum") or "",
-                    extra={"refnr": refnr},
+                    posted=it.get("datumErsteVeroeffentlichung") or it.get("aktuelleVeroeffentlichungsdatum") or "",
+                    remote=bool(it.get("homeofficemoeglich")),
+                    extra={"refnr": refnr, "teilzeit": parttime},
                 )
                 jobs.setdefault(job.id, job)
             time.sleep(1.0)
     return list(jobs.values())
+
+
+_DETAIL_STATS = {"ok": 0, "empty": 0}
 
 
 def enrich(job: Job) -> None:
@@ -89,3 +103,8 @@ def enrich(job: Job) -> None:
     refnr = job.extra.get("refnr")
     if refnr and not job.description:
         job.description = _details(refnr)
+        _DETAIL_STATS["ok" if job.description else "empty"] += 1
+
+
+def detail_stats() -> str:
+    return f"BA details: {_DETAIL_STATS['ok']} with text, {_DETAIL_STATS['empty']} empty"

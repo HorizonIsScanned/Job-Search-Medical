@@ -92,6 +92,7 @@ def main() -> int:
     for j in candidates:
         bundesagentur.enrich(j)
         ats.enrich(j)
+    log(bundesagentur.detail_stats())
     kept = []
     for j in candidates:
         if not matcher.text_ok(j) or matcher.prefilter_score(j) < cfg["matching"]["min_prefilter_score"]:

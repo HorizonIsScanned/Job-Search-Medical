@@ -7,6 +7,15 @@ import { dirname } from 'node:path';
 const [cmd, file = 'data/state.json'] = process.argv.slice(2);
 const PATHNAME = 'board/state.json';
 
+if (!process.env.BLOB_READ_WRITE_TOKEN) {
+  console.log('BLOB_READ_WRITE_TOKEN not set: test run without stored state');
+  if (cmd === 'get') {
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, '');
+  }
+  process.exit(0);
+}
+
 if (cmd === 'get') {
   await mkdir(dirname(file), { recursive: true });
   const res = await get(PATHNAME, { access: 'private', useCache: false });

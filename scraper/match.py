@@ -211,11 +211,12 @@ class Matcher:
 
     def _check_claude(self, posting: str) -> dict | None:
         try:
+            extra = {} if "haiku" in self.mcfg["model"] else {
+                "betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
             resp = self.client.beta.messages.create(
                 model=self.mcfg["model"],
                 max_tokens=4000,
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",
+                **extra,
                 cache_control={"type": "ephemeral"},
                 system=SYSTEM.replace("{profile}", self.profile),
                 messages=[{"role": "user", "content": f"<posting>\n{posting}\n</posting>"}],

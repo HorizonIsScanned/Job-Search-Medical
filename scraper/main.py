@@ -41,7 +41,7 @@ def main() -> int:
     known = {j["id"] for j in state["jobs"]} | set(seen)
     matcher = Matcher(cfg)
     if not matcher.client:
-        log("WARNING: ANTHROPIC_API_KEY or PROFILE_JSON missing, requirement check disabled")
+        log("WARNING: LLM key or PROFILE_JSON missing, requirement check disabled")
 
     collected: list[Job] = []
     failed: list[str] = []

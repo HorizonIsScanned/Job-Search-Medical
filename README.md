@@ -26,7 +26,7 @@ GitHub Actions (cron, daily)
   │    └─ career pages + niche boards     sites.py  (crawl4ai, JSON-LD JobPosting)
   ├─ dedup (URL, then title + employer)
   ├─ rules: excluded titles, locations, licence/C1 phrases, topic words
-  ├─ strict requirement check with Claude  (scraper/match.py)
+  ├─ strict requirement check with Gemini or Claude  (scraper/match.py)
   │    every requirement → met / unmet / unclear against the profile
   │    any required item unmet → dropped · any unclear → "Prüfen" list
   ├─ save state to Blob                   (scripts/blob.mjs put)
@@ -43,7 +43,8 @@ GitHub → Settings → Secrets and variables → Actions:
 
 | Name | What |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Claude API key for the requirement check |
+| `GEMINI_API_KEY` | Google AI Studio key (free tier) for the requirement check, default provider |
+| `ANTHROPIC_API_KEY` | Optional: Claude API key, used when `matching.provider` (or variable `LLM_PROVIDER`) is `claude` |
 | `PROFILE_JSON` | Candidate profile as JSON (see `examples/profile.example.json`) |
 | `BLOB_READ_WRITE_TOKEN` | Token of the private Vercel Blob store |
 | `NTFY_TOPIC` | Random ntfy topic for the daily push |

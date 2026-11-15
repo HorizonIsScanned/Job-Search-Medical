@@ -29,6 +29,8 @@ jobs:
     env:
       BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
       PROFILE_JSON: ${{ secrets.PROFILE_JSON }}
       NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
       NTFY_ALERT_TOPIC: ${{ secrets.NTFY_ALERT_TOPIC }}

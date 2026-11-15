@@ -68,7 +68,13 @@ class Matcher:
         profile = os.environ.get("PROFILE_JSON", "")
         self.profile = json.dumps(json.loads(profile), ensure_ascii=False, indent=1) if profile else ""
         self.client = None
-        if os.environ.get("ANTHROPIC_API_KEY") and self.profile:
+        self.provider = os.environ.get("LLM_PROVIDER") or self.mcfg.get("provider", "gemini")
+        if not self.profile:
+            return
+        if self.provider == "gemini" and os.environ.get("GEMINI_API_KEY"):
+            from google import genai
+            self.client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+        elif self.provider == "claude" and os.environ.get("ANTHROPIC_API_KEY"):
             import anthropic
             self.client = anthropic.Anthropic()
 
@@ -115,6 +121,45 @@ class Matcher:
             return None
         posting = (f"Titel: {job.title}\nArbeitgeber: {job.org}\nOrt: {job.location}\n"
                    f"Remote: {'ja' if job.remote else 'unbekannt'}\n\n{job.description[:14000]}")
+        if self.provider == "gemini":
+            return self._check_gemini(posting)
+        return self._check_claude(posting)
+
+    def _check_gemini(self, posting: str) -> dict | None:
+        import time
+        from google.genai import types
+
+        gcfg = self.mcfg.get("gemini", {})
+        for attempt in range(4):
+            try:
+                resp = self.client.models.generate_content(
+                    model=gcfg.get("model", "gemini-flash-latest"),
+                    contents=f"<posting>\n{posting}\n</posting>",
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM.replace("{profile}", self.profile),
+                        response_mime_type="application/json",
+                        response_json_schema=SCHEMA,
+                        temperature=0,
+                    ),
+                )
+                time.sleep(gcfg.get("pause_seconds", 4))  # stay under the free-tier per-minute limit
+                return json.loads(resp.text)
+            except ValueError:
+                return None
+            except Exception as e:  # noqa: BLE001
+                msg = str(e)
+                if ("429" in msg or "RESOURCE_EXHAUSTED" in msg) and attempt < 3:
+                    if "per day" in msg.lower() or "PerDay" in msg:
+                        log("  Gemini daily quota reached")
+                        self.client = None
+                        return None
+                    time.sleep(30 * (attempt + 1))
+                    continue
+                log(f"  Gemini check failed ({type(e).__name__}: {msg[:200]})")
+                return None
+        return None
+
+    def _check_claude(self, posting: str) -> dict | None:
         try:
             resp = self.client.beta.messages.create(
                 model=self.mcfg["model"],

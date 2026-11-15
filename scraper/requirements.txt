@@ -3,3 +3,4 @@ anthropic==2.8.0
 crawl4ai>=0.7,<0.9
 pyyaml>=6
 requests>=2.32
+google-genai==3.3.0

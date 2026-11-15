@@ -203,7 +203,13 @@ ats:
 
 # Matching and notifications ------------------------------------------------
 matching:
-  model: claude-opus-5-5
+  # gemini (free tier via Google AI Studio key) or claude (paid API key).
+  # The LLM_PROVIDER environment variable overrides this.
+  provider: gemini
+  gemini:
+    model: gemini-flash-latest
+    pause_seconds: 4
+  model: claude-sonnet-5-5   # used when provider is claude
   effort: low
   max_llm_checks_per_run: 80
   min_prefilter_score: 1     # at least one topic word or query hit

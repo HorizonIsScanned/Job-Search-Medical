@@ -135,6 +135,9 @@ async def _run(sites: list[dict], is_wanted, known_ids: set[str], max_details: i
                     text = clean_text(lk.get("text", ""), 300)
                     if pat.search(href) and normalize_url(href) != normalize_url(site["url"]):
                         links.setdefault(normalize_url(href), text)
+            if not links and not postings:
+                sample = [lk.get("href", "") for lk in (res.links or {}).get("internal", [])][:15]
+                log(f"  {name}: no posting links, sample: {sample}")
             n = 0
             for href, text in links.items():
                 probe = Job(title=text, org=name, location=site.get("location", ""), url=href, source=name)

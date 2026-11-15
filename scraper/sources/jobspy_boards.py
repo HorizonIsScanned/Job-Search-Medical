@@ -28,7 +28,7 @@ def fetch(cfg: dict) -> list[Job]:
                 df = scrape_jobs(
                     site_name=jcfg["sites"],
                     search_term=q,
-                    google_search_term=f"{q} jobs in {place['location']}",
+                    google_search_term=f"{q} jobs near {place['location']} since last week",
                     location=place["location"],
                     country_indeed=place["country"],
                     results_wanted=jcfg["results_wanted"],

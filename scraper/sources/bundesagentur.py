@@ -13,14 +13,27 @@ BASE = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
 HEADERS = {"X-API-Key": "jobboerse-jobsuche"}
 
 
+_DEBUGGED = False
+
+
 def _search(params: dict) -> list[dict]:
-    for version in ("v6", "v4"):
+    global _DEBUGGED
+    last: Exception | None = None
+    for version in ("v4", "v6"):
         try:
             data = get_json(f"{BASE}/pc/{version}/jobs", headers=HEADERS, params=params)
-            return data.get("stellenangebote") or []
         except Exception as e:  # noqa: BLE001
             last = e
-    raise last  # type: ignore[possibly-undefined]
+            continue
+        items = data.get("stellenangebote") or data.get("jobs") or data.get("ergebnisliste") or []
+        if not _DEBUGGED:
+            _DEBUGGED = True
+            log(f"  BA {version} response keys: {sorted(data)[:12]}, total={data.get('maxErgebnisse')}")
+        if items:
+            return items
+    if last:
+        raise last
+    return []
 
 
 def _details(refnr: str) -> str:

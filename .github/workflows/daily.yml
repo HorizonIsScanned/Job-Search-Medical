@@ -2,7 +2,9 @@ name: Daily job search
 
 on:
   schedule:
-    - cron: "17 5 * * *"   # 06:17 CET / 07:17 CEST; off the full hour to avoid GitHub's queue peak
+    # Main trigger: cron-job.org calls the workflow_dispatch API at 06:30 Berlin time.
+    # This schedule is only a fallback (already-known postings are skipped, no second push).
+    - cron: "3 8 * * *"   # 09:03 CET / 10:03 CEST
   workflow_dispatch:
     inputs:
       notify:

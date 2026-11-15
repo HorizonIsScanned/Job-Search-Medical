@@ -4,7 +4,7 @@ A daily job board for a medical graduate looking for a PhD position or a
 part-time role (~20 h/week) that uses medical knowledge. Focus areas: women's
 health, imaging, neurology, ophthalmology.
 
-Every morning a GitHub Actions cron job collects new postings, drops those
+Every morning (triggered by cron-job.org via the workflow_dispatch API, with a GitHub schedule as fallback) a GitHub Actions run collects new postings, drops those
 whose **required** qualifications the candidate does not meet, and pushes the
 best new matches via [ntfy](https://ntfy.sh). Results are shown on a
 password-protected Next.js page on Vercel.

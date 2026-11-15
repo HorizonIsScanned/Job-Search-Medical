@@ -1,0 +1,88 @@
+name: Daily job search
+
+on:
+  schedule:
+    - cron: "17 5 * * *"   # 06:17 CET / 07:17 CEST; off the full hour to avoid GitHub's queue peak
+  workflow_dispatch:
+    inputs:
+      notify:
+        description: "Send ntfy push"
+        type: boolean
+        default: true
+      only_sources:
+        description: "Only these sources (comma list: bundesagentur,jobspy,ats,sites), empty = all"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  actions: write   # keepalive re-enables the schedule
+
+concurrency:
+  group: daily-search
+  cancel-in-progress: false
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      PROFILE_JSON: ${{ secrets.PROFILE_JSON }}
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      NTFY_ALERT_TOPIC: ${{ secrets.NTFY_ALERT_TOPIC }}
+      BOARD_URL: ${{ vars.BOARD_URL }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      NOTIFY: ${{ (github.event_name == 'schedule' || inputs.notify) && '1' || '0' }}
+      ONLY_SOURCES: ${{ inputs.only_sources }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Personal data check
+        env:
+          PII_PATTERNS: ${{ secrets.PII_PATTERNS }}
+        run: python3 scripts/pii_check.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --omit=dev --ignore-scripts
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scraper/requirements.txt
+      - name: Install scraper
+        run: |
+          pip install -r scraper/requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Load state
+        run: node scripts/blob.mjs get
+
+      - name: Search
+        run: python scraper/main.py
+
+      - name: Save state
+        if: success()
+        run: node scripts/blob.mjs put
+
+      - name: Alert on failure
+        if: failure() && env.NTFY_TOPIC != ''
+        run: |
+          curl -s -H "Title: Jobboard: taeglicher Lauf fehlgeschlagen" -H "Priority: low" -H "Tags: warning" \
+            -H "Click: $RUN_URL" -d "Der Lauf ist abgebrochen. Details im Actions-Protokoll." \
+            "https://ntfy.sh/${NTFY_ALERT_TOPIC:-$NTFY_TOPIC}" > /dev/null
+
+  keepalive:
+    # GitHub disables scheduled workflows after 60 days without repository
+    # activity. Re-enabling the workflow resets that timer.
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh workflow enable daily.yml --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}

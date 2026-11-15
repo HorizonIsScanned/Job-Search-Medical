@@ -1,0 +1,215 @@
+# Search configuration. Contains no personal data: the candidate profile
+# lives in the PROFILE_JSON secret, never in this repository.
+
+# Places a job may be in. A job also passes when it is remote.
+locations:
+  - name: Berlin
+    aliases: [berlin, potsdam]
+  - name: Hamburg
+    aliases: [hamburg]
+  - name: Frankfurt am Main
+    aliases: [frankfurt]
+  - name: München
+    aliases: [münchen, muenchen, munich]
+  - name: Wien
+    aliases: [wien, vienna]
+    country: austria
+  - name: Zürich
+    aliases: [zürich, zuerich, zurich]
+    country: switzerland
+  - name: Heidelberg
+    aliases: [heidelberg]
+remote_words: [remote, homeoffice, home office, home-office, mobiles arbeiten, telearbeit]
+
+# Search terms for the job boards (Bundesagentur, Indeed, Google, LinkedIn).
+queries:
+  - Studienkoordinator
+  - Study Nurse
+  - Clinical Research Associate
+  - Wissenschaftliche Mitarbeiterin Medizin
+  - Doktorand Medizin
+  - PhD medicine
+  - Medical Writer
+  - Medical Information Manager
+  - Pharmakovigilanz
+  - Gynäkologie Forschung
+  - Neuroimaging
+  - Ophthalmologie Studie
+
+# Topics and weights for the score (0-100 is computed from these + the requirement check).
+topics:
+  womens_health:
+    label: Frauengesundheit
+    weight: 30
+    words: [gynäkolog, gynecolog, geburtshilf, obstetric, frauenheilkunde, frauengesundheit, women's health, womens health, reproduktion, reproductive, fertilit, endometrios, schwangerschaft, pregnan, pränatal, prenatal, perinatal, mamma, brust, breast, menopaus, klimakter, stillen, breastfeed, lactation, maternal, hebamm, midwif]
+  imaging:
+    label: Bildgebung
+    weight: 25
+    words: [radiolog, bildgebung, imaging, mrt, mri, ct-, computertomograph, ultraschall, ultrasound, sonograph, nuklearmedizin, pet-, bildanalyse, image analysis, neuroimaging]
+  neurology:
+    label: Neurologie
+    weight: 20
+    words: [neurolog, neuro, gehirn, brain, schlaganfall, stroke, demenz, dementia, alzheimer, parkinson, epileps, multiple sklerose, multiple sclerosis]
+  ophthalmology:
+    label: Augenheilkunde
+    weight: 20
+    words: [ophthalmolog, augenheilkunde, augenklinik, retina, netzhaut, glaukom, glaucoma, oct, eye]
+  research:
+    label: Klinische Forschung
+    weight: 10
+    words: [studie, study, clinical trial, klinische forschung, clinical research, epidemiolog, public health, biostatist, medical writing, pharmakovigilanz, pharmacovigilance, promotion, doktorand, phd, doctoral]
+
+# Titles that are dropped before any further check (requires a licence, a
+# specialist title, a student status, or is not a medical-knowledge role).
+exclude_title:
+  - oberarzt
+  - oberärztin
+  - chefarzt
+  - chefärztin
+  - facharzt
+  - fachärztin
+  - assistenzarzt
+  - assistenzärztin
+  - arzt in weiterbildung
+  - ärztin in weiterbildung
+  - pflegefachkraft
+  - pflegefachfrau
+  - pflegefachmann
+  - gesundheits- und krankenpfleger
+  - krankenpfleger
+  - ausbildung
+  - azubi
+  - auszubildende
+  - werkstudent
+  - studentische hilfskraft
+  - praktikum
+  - internship
+  - postdoc
+  - postdoctoral
+  - professor
+  - leitung
+  - head of
+  - director
+  - senior
+  - teamleiter
+  - mfa
+  - medizinische fachangestellte
+  - zahnarzt
+  - zahnmedizin
+  - tierarzt
+  - apotheker
+  - physiotherap
+  - ergotherap
+  - logopäd
+  - software
+  - developer
+  - entwickler
+  - sales
+  - vertrieb
+  - außendienst
+
+# Description phrases that mean a hard requirement she cannot meet yet.
+exclude_text:
+  - approbation als arzt erforderlich
+  - approbation ist erforderlich
+  - abgeschlossene facharztweiterbildung
+  - deutschkenntnisse auf c1
+  - deutsch c1
+  - deutsch auf c2
+  - verhandlungssichere deutschkenntnisse
+  - deutsch verhandlungssicher
+
+# Board sources --------------------------------------------------------------
+
+bundesagentur:
+  enabled: true
+  radius_km: 30
+  days: 7            # first run uses first_run_days
+  first_run_days: 30
+  size: 50
+  cities: [Berlin, Hamburg, Frankfurt am Main, München, Heidelberg]
+
+jobspy:
+  enabled: true
+  sites: [indeed, google, linkedin]
+  results_wanted: 15
+  hours_old: 72
+  queries:            # subset of queries for the international boards
+    - Study Coordinator
+    - Studienkoordinator
+    - Clinical Research Associate
+    - Medical Writer
+    - PhD medicine
+    - Wissenschaftliche Mitarbeiterin Medizin
+  places:
+    - {location: Berlin, country: germany}
+    - {location: Hamburg, country: germany}
+    - {location: Frankfurt am Main, country: germany}
+    - {location: München, country: germany}
+    - {location: Wien, country: austria}
+    - {location: Zürich, country: switzerland}
+
+# Career pages and niche boards, read with crawl4ai. Each listing page is
+# rendered, links that look like job postings are collected (link_pattern),
+# and each new posting is read via JSON-LD (schema.org/JobPosting) or as
+# markdown.
+sites:
+  - name: Charité
+    url: https://karriere.charite.de/en/job-vacancies
+    link_pattern: /job-vacancies/detail/\d+
+    location: Berlin
+  - name: EURAXESS
+    url: https://euraxess.ec.europa.eu/jobs/search?keywords=medicine%20germany
+    link_pattern: /jobs/\d+
+  - name: EURAXESS
+    url: https://euraxess.ec.europa.eu/jobs/search?keywords=gynaecology
+    link_pattern: /jobs/\d+
+  - name: EURAXESS
+    url: https://euraxess.ec.europa.eu/jobs/search?keywords=neuroimaging%20phd
+    link_pattern: /jobs/\d+
+  - name: Berlin Institute of Health
+    url: https://www.bihealth.org/en/career/job-offers
+    link_pattern: /job-offers/|/stellenangebote/|/jobs?/
+    location: Berlin
+  - name: DZNE
+    url: https://www.dzne.de/en/career/job-offers/
+    link_pattern: /job-offers/|/stellenangebote/|jobs
+  - name: Max-Planck-Gesellschaft
+    url: https://www.mpg.de/stellenboerse
+    link_pattern: /stellenboerse/|/\d{6,}/
+  - name: Helmholtz
+    url: https://www.helmholtz.de/karriere/stellenangebote/
+    link_pattern: /stellenangebote/|/job/|/jobs/
+  - name: Ärzteblatt
+    url: https://aerztestellen.aerzteblatt.de/de/stellen/forschung
+    link_pattern: /de/stelle/
+  - name: PraktischArzt
+    url: https://www.praktischarzt.de/jobs/forschung/
+    link_pattern: /job/|/stellenangebot/
+  - name: Helios
+    url: https://www.helios-gesundheit.de/karriere/stellenangebote/?q=studienkoordination
+    link_pattern: /stellenangebote/|/job/
+  - name: academics
+    url: https://www.academics.de/jobs/wissenschaftlicher-mitarbeiter-medizin
+    link_pattern: /jobs/.+-\d+
+
+# Applicant tracking systems with public JSON/XML feeds. Unverified entries
+# are skipped with a warning if the feed does not answer.
+ats:
+  - {type: workday, name: IQVIA, host: iqvia.wd1.myworkdayjobs.com, tenant: iqvia, site: IQVIA}
+  - {type: workday, name: ICON, host: iconplc.wd3.myworkdayjobs.com, tenant: iconplc, site: broadbean_external}
+  - {type: workday, name: Parexel, host: parexel.wd1.myworkdayjobs.com, tenant: parexel, site: Parexel_External_Careers}
+  - {type: workday, name: Syneos Health, host: syneoshealth.wd12.myworkdayjobs.com, tenant: syneoshealth, site: syneos_health_external_site}
+
+# Matching and notifications ------------------------------------------------
+matching:
+  model: claude-opus-5-5
+  effort: low
+  max_llm_checks_per_run: 80
+  min_prefilter_score: 1     # at least one topic word or query hit
+notify:
+  min_score: 60
+  high_priority_score: 80
+  max_items: 5
+  max_failed_sources: 3
+keep_days: 60

@@ -1,0 +1,12 @@
+{
+  "degree": "Doctor of Medicine (M.D.), Example University, 2025.",
+  "licence": "No German Approbation yet.",
+  "clinical_experience": "2 months full-time in an emergency department.",
+  "research_experience": ["Survey-based study in maternal health, co-author of one paper."],
+  "research_skills": ["questionnaire data collection", "data management in Excel", "scientific writing"],
+  "software": ["Microsoft Excel"],
+  "not_in_profile": ["R or Python", "GCP certificate"],
+  "languages": {"English": "C1", "German": "B1"},
+  "goals": "PhD position or part-time research job (~20 h/week), main interest women's health.",
+  "locations": "Berlin or remote."
+}

@@ -1,0 +1,188 @@
+"""Filtering and strict requirement matching against the candidate profile.
+
+The profile comes from the PROFILE_JSON secret. It is sent to the Claude API
+and never written to logs or to the repository.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+
+from common import Job, log
+
+SCHEMA = {
+    "type": "object",
+    "properties": {
+        "kind": {"type": "string", "enum": ["phd", "job", "other"],
+                 "description": "phd = doctoral position or PhD programme; job = paid position; other = not a position (course, event, list page)"},
+        "requirements": {
+            "type": "array",
+            "description": "Every requirement the posting states, one per item.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "The requirement, short, in German"},
+                    "mandatory": {"type": "boolean", "description": "true if required (vorausgesetzt, erforderlich, required, must); false if only desirable (wünschenswert, von Vorteil, nice to have, ideally)"},
+                    "status": {"type": "string", "enum": ["met", "unmet", "unclear"]},
+                },
+                "required": ["text", "mandatory", "status"],
+                "additionalProperties": False,
+            },
+        },
+        "needs_medical_license": {"type": "boolean", "description": "true if a German Approbation, Berufserlaubnis or specialist title is required"},
+        "part_time_possible": {"type": "string", "enum": ["yes", "no", "unclear"]},
+        "topic": {"type": "string", "description": "Main medical field, in German, 1-3 words"},
+        "fit_score": {"type": "integer", "description": "0-100: how well field and tasks match the candidate's interests and goals, ignoring requirements"},
+        "summary": {"type": "string", "description": "One German sentence: what the role is and why it fits or not. Do not repeat personal details of the candidate."},
+    },
+    "required": ["kind", "requirements", "needs_medical_license", "part_time_possible", "topic", "fit_score", "summary"],
+    "additionalProperties": False,
+}
+
+SYSTEM = """You screen job postings for one candidate. You get the candidate profile below and one posting.
+
+Extract every requirement the posting states and judge each one strictly against the profile:
+- met: the profile clearly shows it (same skill, degree, language level or more).
+- unmet: the profile clearly does not have it (e.g. a licence, a specialist title, years of experience, a programming language, a certificate, a language level above the profile's).
+- unclear: the posting is vague ("gute Deutschkenntnisse", "erste Erfahrung") or the profile does not say.
+Never assume skills that are not in the profile. A requirement for a degree in medicine is met by the profile's M.D.
+Mark a requirement mandatory unless the posting calls it desirable, an advantage, or optional.
+Write requirement texts and the summary in German.
+
+<candidate_profile>
+{profile}
+</candidate_profile>"""
+
+
+class Matcher:
+    def __init__(self, cfg: dict):
+        self.cfg = cfg
+        self.mcfg = cfg["matching"]
+        self.excl_title = [w.lower() for w in cfg.get("exclude_title", [])]
+        self.excl_text = [w.lower() for w in cfg.get("exclude_text", [])]
+        self.topics = cfg["topics"]
+        self.queries = [q.lower() for q in cfg.get("queries", [])]
+        self.loc_aliases = [a.lower() for loc in cfg["locations"] for a in loc["aliases"]]
+        self.remote_words = [w.lower() for w in cfg.get("remote_words", [])]
+        profile = os.environ.get("PROFILE_JSON", "")
+        self.profile = json.dumps(json.loads(profile), ensure_ascii=False, indent=1) if profile else ""
+        self.client = None
+        if os.environ.get("ANTHROPIC_API_KEY") and self.profile:
+            import anthropic
+            self.client = anthropic.Anthropic()
+
+    # --- cheap rules -------------------------------------------------------
+    def title_ok(self, job: Job) -> bool:
+        t = job.title.lower()
+        return bool(t) and not any(w in t for w in self.excl_title)
+
+    def location_ok(self, job: Job) -> bool:
+        loc = f"{job.location} {job.title}".lower()
+        if job.remote or any(w in loc for w in self.remote_words):
+            return True
+        if not job.location:
+            return True  # unknown: let the requirement check decide, flagged later
+        return any(a in loc for a in self.loc_aliases)
+
+    def text_ok(self, job: Job) -> bool:
+        d = job.description.lower()
+        return not any(w in d for w in self.excl_text)
+
+    def topic_hits(self, job: Job) -> dict[str, int]:
+        text = f"{job.title} {job.title} {job.description}".lower()
+        hits = {}
+        for key, t in self.topics.items():
+            n = sum(1 for w in t["words"] if w in text)
+            if n:
+                hits[key] = n
+        return hits
+
+    def prefilter_score(self, job: Job) -> int:
+        hits = self.topic_hits(job)
+        score = sum(self.topics[k]["weight"] for k in hits)
+        if any(q in job.title.lower() for q in self.queries):
+            score += 5
+        return score
+
+    def is_wanted(self, job: Job) -> bool:
+        """Used before reading a posting's details (title only)."""
+        return self.title_ok(job)
+
+    # --- strict check with Claude -----------------------------------------
+    def check(self, job: Job) -> dict | None:
+        if not self.client:
+            return None
+        posting = (f"Titel: {job.title}\nArbeitgeber: {job.org}\nOrt: {job.location}\n"
+                   f"Remote: {'ja' if job.remote else 'unbekannt'}\n\n{job.description[:14000]}")
+        try:
+            resp = self.client.beta.messages.create(
+                model=self.mcfg["model"],
+                max_tokens=4000,
+                betas=["server-side-fallback-2026-07-01"],
+                fallbacks="default",
+                cache_control={"type": "ephemeral"},
+                system=SYSTEM.replace("{profile}", self.profile),
+                messages=[{"role": "user", "content": f"<posting>\n{posting}\n</posting>"}],
+                output_config={"effort": self.mcfg.get("effort", "low"),
+                               "format": {"type": "json_schema", "schema": SCHEMA}},
+            )
+        except Exception as e:  # noqa: BLE001
+            log(f"  Claude check failed ({type(e).__name__}: {str(e)[:200]})")
+            return None
+        if resp.stop_reason in ("refusal", "max_tokens"):
+            return None
+        text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+        try:
+            return json.loads(text)
+        except ValueError:
+            return None
+
+
+def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
+    """Turn the Claude result into board status: match / check / reject."""
+    hits = matcher.topic_hits(job)
+    topics = [matcher.topics[k]["label"] for k in sorted(hits, key=lambda k: -matcher.topics[k]["weight"])]
+    if result is None:
+        return {"status": "check", "score": min(60, matcher.prefilter_score(job)), "topics": topics,
+                "summary": "Nicht automatisch geprüft (keine Beschreibung oder Prüfung fehlgeschlagen).",
+                "requirements": [], "kind": "job"}
+    reqs = result.get("requirements") or []
+    mandatory = [r for r in reqs if r.get("mandatory")]
+    unmet = [r for r in mandatory if r.get("status") == "unmet"]
+    unclear = [r for r in mandatory if r.get("status") == "unclear"]
+    score = int(result.get("fit_score") or 0)
+    kind = result.get("kind", "job")
+    reasons = []
+    if kind == "other":
+        status = "reject"
+    elif result.get("needs_medical_license") or unmet:
+        status = "reject"
+    elif unclear:
+        status = "check"
+        reasons.append("Pflichtanforderung unklar")
+    else:
+        status = "match"
+    if kind == "job" and result.get("part_time_possible") == "no" and status == "match":
+        status = "check"
+        reasons.append("keine Teilzeit")
+    if result.get("part_time_possible") == "yes":
+        score = min(100, score + 5)
+    if not job.location and status == "match":
+        status = "check"
+        reasons.append("Ort unbekannt")
+    return {
+        "status": status,
+        "score": score,
+        "kind": kind,
+        "topic": result.get("topic", ""),
+        "topics": topics,
+        "summary": result.get("summary", ""),
+        "part_time": result.get("part_time_possible", "unclear"),
+        "requirements": reqs,
+        "notes": reasons,
+    }
+
+
+def slug(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")

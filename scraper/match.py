@@ -72,12 +72,16 @@ class Matcher:
         self.provider = os.environ.get("LLM_PROVIDER") or self.mcfg.get("provider", "gemini")
         if not self.profile:
             return
+        self.claude = None
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            import anthropic
+            self.claude = anthropic.Anthropic()
         if self.provider == "gemini" and os.environ.get("GEMINI_API_KEY"):
             from google import genai
             self.client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-        elif self.provider == "claude" and os.environ.get("ANTHROPIC_API_KEY"):
-            import anthropic
-            self.client = anthropic.Anthropic()
+        elif self.claude:
+            self.provider = "claude"
+            self.client = self.claude
 
     # --- cheap rules -------------------------------------------------------
     def title_ok(self, job: Job) -> bool:
@@ -123,7 +127,14 @@ class Matcher:
         posting = (f"Titel: {job.title}\nArbeitgeber: {job.org}\nOrt: {job.location}\n"
                    f"Remote: {'ja' if job.remote else 'unbekannt'}\n\n{job.description[:14000]}")
         if self.provider == "gemini":
-            return self._check_gemini(posting)
+            result = self._check_gemini(posting)
+            if result is None and self.exhausted and self.claude:
+                # Free Gemini quota used up: continue with the cheap Claude fallback model.
+                log("  switching to Claude fallback for the rest of this run")
+                self.provider, self.client, self.exhausted = "claude", self.claude, False
+                self.mcfg = {**self.mcfg, "model": self.mcfg.get("fallback_model", self.mcfg["model"])}
+                return self._check_claude(posting)
+            return result
         return self._check_claude(posting)
 
     def _check_gemini(self, posting: str) -> dict | None:
@@ -194,7 +205,7 @@ class Matcher:
         ordered = sorted(set(flash), key=rank, reverse=True)
         if wanted and wanted in names:
             ordered = [wanted] + [n for n in ordered if n != wanted]
-        ordered = ordered[:4]
+        ordered = ordered[:8]
         log(f"  Gemini models in order: {ordered}")
         return ordered
 

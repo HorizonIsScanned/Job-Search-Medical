@@ -206,7 +206,8 @@ matching:
   gemini:
     model: ""            # empty = newest Flash model the key can use
     pause_seconds: 4
-  model: claude-sonnet-5-5   # used when provider is claude
+  model: claude-sonnet-5-5         # used when provider is claude
+  fallback_model: claude-haiku-5-5  # used when the free Gemini quota is used up (needs ANTHROPIC_API_KEY)
   effort: low
   max_llm_checks_per_run: 80
   min_prefilter_score: 1     # at least one topic word or query hit

@@ -106,8 +106,15 @@ def main() -> int:
 
     new_entries = []
     counts = {"match": 0, "check": 0, "reject": 0}
+    deferred = 0
     for j in kept[:limit]:
+        if matcher.client and matcher.exhausted:
+            deferred += 1  # not recorded: checked again on the next run
+            continue
         result = matcher.check(j) if j.description else None
+        if result is None and j.description and matcher.client and matcher.exhausted:
+            deferred += 1
+            continue
         m = decide(j, result, matcher)
         counts[m["status"]] += 1
         if m["status"] == "reject":
@@ -120,7 +127,7 @@ def main() -> int:
         entry["first_seen"] = now.isoformat()
         entry["match"] = m
         new_entries.append(entry)
-    log(f"result: {counts['match']} match, {counts['check']} check, {counts['reject']} reject")
+    log(f"result: {counts['match']} match, {counts['check']} check, {counts['reject']} reject, {deferred} deferred to next run")
 
     # Keep recent entries, forget old ones.
     cutoff = (now - timedelta(days=cfg["keep_days"])).isoformat()

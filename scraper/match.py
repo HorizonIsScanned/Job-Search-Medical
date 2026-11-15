@@ -68,6 +68,7 @@ class Matcher:
         profile = os.environ.get("PROFILE_JSON", "")
         self.profile = json.dumps(json.loads(profile), ensure_ascii=False, indent=1) if profile else ""
         self.client = None
+        self.exhausted = False
         self.provider = os.environ.get("LLM_PROVIDER") or self.mcfg.get("provider", "gemini")
         if not self.profile:
             return
@@ -130,61 +131,72 @@ class Matcher:
         from google.genai import types
 
         gcfg = self.mcfg.get("gemini", {})
-        if not getattr(self, "gemini_model", None):
-            self.gemini_model = self._pick_gemini_model(gcfg.get("model", ""))
-            if not self.gemini_model:
-                self.client = None
-                return None
-        for attempt in range(4):
-            try:
-                resp = self.client.models.generate_content(
-                    model=self.gemini_model,
-                    contents=f"<posting>\n{posting}\n</posting>",
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM.replace("{profile}", self.profile),
-                        response_mime_type="application/json",
-                        response_json_schema=SCHEMA,
-                        temperature=0,
-                    ),
-                )
-                time.sleep(gcfg.get("pause_seconds", 4))  # stay under the free-tier per-minute limit
-                return json.loads(resp.text)
-            except ValueError:
-                return None
-            except Exception as e:  # noqa: BLE001
-                msg = str(e)
-                if ("429" in msg or "RESOURCE_EXHAUSTED" in msg) and attempt < 3:
-                    if "per day" in msg.lower() or "PerDay" in msg:
-                        log("  Gemini daily quota reached")
-                        self.client = None
+        if not hasattr(self, "gemini_models"):
+            self.gemini_models = self._gemini_candidates(gcfg.get("model", ""))
+        while self.gemini_models:
+            model = self.gemini_models[0]
+            for attempt in range(5):
+                try:
+                    resp = self.client.models.generate_content(
+                        model=model,
+                        contents=f"<posting>\n{posting}\n</posting>",
+                        config=types.GenerateContentConfig(
+                            system_instruction=SYSTEM.replace("{profile}", self.profile),
+                            response_mime_type="application/json",
+                            response_json_schema=SCHEMA,
+                            temperature=0,
+                        ),
+                    )
+                    time.sleep(gcfg.get("pause_seconds", 4))  # stay under the free-tier per-minute limit
+                    try:
+                        return json.loads(resp.text)
+                    except (ValueError, TypeError):
                         return None
-                    time.sleep(30 * (attempt + 1))
-                    continue
-                log(f"  Gemini check failed ({type(e).__name__}: {msg[:200]})")
+                except Exception as e:  # noqa: BLE001
+                    msg = str(e)
+                    if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+                        if "per day" in msg.lower() or "PerDay" in msg or attempt >= 2:
+                            log(f"  Gemini quota reached for {model}, trying next model")
+                            break
+                        time.sleep(30 * (attempt + 1))
+                        continue
+                    if "503" in msg or "UNAVAILABLE" in msg or "500" in msg:
+                        time.sleep(15 * (attempt + 1))
+                        continue
+                    log(f"  Gemini check failed ({type(e).__name__}: {msg[:200]})")
+                    return None
+            else:
+                log(f"  Gemini {model} keeps failing, skipping posting")
                 return None
+            self.gemini_models.pop(0)
+            if self.gemini_models:
+                log(f"  Gemini model: {self.gemini_models[0]}")
+        self.exhausted = True
         return None
 
-    def _pick_gemini_model(self, wanted: str) -> str:
-        """Use the configured model if the key can use it, else the newest Flash model."""
+    def _gemini_candidates(self, wanted: str) -> list[str]:
+        """Configured model first (if available), then Flash models newest first, each has its own free quota."""
         import re as _re
         try:
             names = [m.name.removeprefix("models/") for m in self.client.models.list()
                      if "generateContent" in (getattr(m, "supported_actions", None) or ["generateContent"])]
         except Exception as e:  # noqa: BLE001
             log(f"  Gemini model list failed ({type(e).__name__}: {str(e)[:120]})")
-            return wanted
-        if wanted and wanted in names:
-            log(f"  Gemini model: {wanted}")
-            return wanted
+            return [wanted] if wanted else []
 
         def rank(n: str):
             v = _re.search(r"gemini-(\d+(?:\.\d+)?)", n)
-            return (float(v.group(1)) if v else 0, "lite" not in n, "preview" not in n and "exp" not in n)
+            stable = "preview" not in n and "exp" not in n
+            return (stable, float(v.group(1)) if v else 0, "lite" not in n)
 
-        flash = [n for n in names if "flash" in n and not any(x in n for x in ("image", "tts", "audio", "live", "embedding"))]
-        best = max(flash, key=rank) if flash else ""
-        log(f"  Gemini model: {best or 'none found'} (configured '{wanted}' not available)")
-        return best
+        flash = [n for n in names if "flash" in n and not any(
+            x in n for x in ("image", "tts", "audio", "live", "embedding", "thinking"))]
+        ordered = sorted(set(flash), key=rank, reverse=True)
+        if wanted and wanted in names:
+            ordered = [wanted] + [n for n in ordered if n != wanted]
+        ordered = ordered[:4]
+        log(f"  Gemini models in order: {ordered}")
+        return ordered
 
     def _check_claude(self, posting: str) -> dict | None:
         try:

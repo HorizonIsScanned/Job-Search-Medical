@@ -130,10 +130,15 @@ class Matcher:
         from google.genai import types
 
         gcfg = self.mcfg.get("gemini", {})
+        if not getattr(self, "gemini_model", None):
+            self.gemini_model = self._pick_gemini_model(gcfg.get("model", ""))
+            if not self.gemini_model:
+                self.client = None
+                return None
         for attempt in range(4):
             try:
                 resp = self.client.models.generate_content(
-                    model=gcfg.get("model", "gemini-flash-latest"),
+                    model=self.gemini_model,
                     contents=f"<posting>\n{posting}\n</posting>",
                     config=types.GenerateContentConfig(
                         system_instruction=SYSTEM.replace("{profile}", self.profile),
@@ -158,6 +163,28 @@ class Matcher:
                 log(f"  Gemini check failed ({type(e).__name__}: {msg[:200]})")
                 return None
         return None
+
+    def _pick_gemini_model(self, wanted: str) -> str:
+        """Use the configured model if the key can use it, else the newest Flash model."""
+        import re as _re
+        try:
+            names = [m.name.removeprefix("models/") for m in self.client.models.list()
+                     if "generateContent" in (getattr(m, "supported_actions", None) or ["generateContent"])]
+        except Exception as e:  # noqa: BLE001
+            log(f"  Gemini model list failed ({type(e).__name__}: {str(e)[:120]})")
+            return wanted
+        if wanted and wanted in names:
+            log(f"  Gemini model: {wanted}")
+            return wanted
+
+        def rank(n: str):
+            v = _re.search(r"gemini-(\d+(?:\.\d+)?)", n)
+            return (float(v.group(1)) if v else 0, "lite" not in n, "preview" not in n and "exp" not in n)
+
+        flash = [n for n in names if "flash" in n and not any(x in n for x in ("image", "tts", "audio", "live", "embedding"))]
+        best = max(flash, key=rank) if flash else ""
+        log(f"  Gemini model: {best or 'none found'} (configured '{wanted}' not available)")
+        return best
 
     def _check_claude(self, posting: str) -> dict | None:
         try:

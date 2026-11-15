@@ -204,7 +204,7 @@ matching:
   # The LLM_PROVIDER environment variable overrides this.
   provider: gemini
   gemini:
-    model: gemini-flash-latest
+    model: ""            # empty = newest Flash model the key can use
     pause_seconds: 4
   model: claude-sonnet-5-5   # used when provider is claude
   effort: low

@@ -12,6 +12,7 @@ import re
 from urllib.parse import urljoin
 
 from common import USER_AGENT, Job, clean_text, log, normalize_url
+import report
 
 JSONLD_RE = re.compile(r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.S | re.I)
 
@@ -118,6 +119,7 @@ async def _run(sites: list[dict], is_wanted, known_ids: set[str], max_details: i
                 res = await _crawl(crawler, site["url"])
             except Exception as e:  # noqa: BLE001
                 log(f"  {name}: listing failed ({type(e).__name__}: {str(e)[:100]})")
+                report.source("Karriereseiten", name, site["url"], 0, "failed", f"{type(e).__name__}: {str(e)[:100]}")
                 failed += 1
                 continue
             # 1) Listing page may already carry full JobPosting JSON-LD.
@@ -139,9 +141,15 @@ async def _run(sites: list[dict], is_wanted, known_ids: set[str], max_details: i
                 sample = [lk.get("href", "") for lk in (res.links or {}).get("internal", [])][:15]
                 log(f"  {name}: no posting links, sample: {sample}")
             n = 0
+            start = len(jobs)
+            skip_known = skip_title = 0
             for href, text in links.items():
                 probe = Job(title=text, org=name, location=site.get("location", ""), url=href, source=name)
-                if probe.id in known_ids or (text and not is_wanted(probe)):
+                if probe.id in known_ids:
+                    skip_known += 1
+                    continue
+                if text and not is_wanted(probe):
+                    skip_title += 1
                     continue
                 if n >= max_details:
                     break
@@ -161,6 +169,9 @@ async def _run(sites: list[dict], is_wanted, known_ids: set[str], max_details: i
                 if j.title:
                     jobs.append(j)
             log(f"  {name}: {len(postings)} JSON-LD, {len(links)} links, {n} details read")
+            report.source("Karriereseiten", name, site["url"], len(jobs) - start + len(postings),
+                          note=f"{len(links)} Links erkannt, {skip_known} schon bekannt, {skip_title} per Titel aussortiert, {n} gelesen"
+                          + (", JSON-LD auf der Übersicht" if postings else ""))
     return jobs, failed
 
 

@@ -103,6 +103,18 @@ class Matcher:
         t = job.title.lower()
         return bool(t) and not any(w in t for w in self.excl_title)
 
+    def title_reason(self, job: Job) -> str:
+        t = job.title.lower()
+        if not t:
+            return "kein Titel"
+        w = next((w for w in self.excl_title if w in t), "")
+        return f"Titel enthält „{w}“"
+
+    def text_reason(self, job: Job) -> str:
+        d = job.description.lower()
+        w = next((w for w in self.excl_text if w in d), "")
+        return f"Anzeige verlangt „{w}“"
+
     def location_ok(self, job: Job) -> bool:
         loc = f"{job.location} {job.title}".lower()
         if job.remote or any(w in loc for w in self.remote_words):
@@ -174,6 +186,9 @@ class Matcher:
                         ),
                     )
                     time.sleep(gcfg.get("pause_seconds", 4))  # stay under the free-tier per-minute limit
+                    self.used_models = getattr(self, "used_models", [])
+                    if model not in self.used_models:
+                        self.used_models.append(model)
                     try:
                         return json.loads(resp.text)
                     except (ValueError, TypeError):
@@ -296,10 +311,15 @@ def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
     score = int(result.get("fit_score") or 0)
     kind = result.get("kind", "job")
     reasons = []
+    reject_reason = ""
     if kind == "other":
         status = "reject"
+        reject_reason = "keine Stellenanzeige (z. B. Kurs, Veranstaltung, Übersicht)"
     elif result.get("needs_medical_license") or unmet:
         status = "reject"
+        parts = (["Approbation oder Facharzttitel nötig"] if result.get("needs_medical_license") else []) + \
+                [r.get("text", "") for r in unmet]
+        reject_reason = "Nicht erfüllt: " + "; ".join(p for p in parts if p)
     elif unclear:
         status = "check"
         reasons.append("Pflichtanforderung unklar")
@@ -324,6 +344,7 @@ def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
         "requirements": reqs,
         "languages": result.get("languages") or languages_from_text(job.description),
         "notes": reasons,
+        **({"reject_reason": reject_reason} if reject_reason else {}),
     }
 
 

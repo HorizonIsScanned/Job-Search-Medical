@@ -8,6 +8,7 @@ import base64
 import time
 
 from common import Job, clean_text, get_json, log
+import report
 
 BASE = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
 HEADERS = {"X-API-Key": "jobboerse-jobsuche"}
@@ -56,6 +57,7 @@ def fetch(cfg: dict, queries: list[str], first_run: bool) -> list[Job]:
     days = bcfg["first_run_days"] if first_run else bcfg["days"]
     jobs: dict[str, Job] = {}
     for city in bcfg["cities"]:
+        before, failed_q = len(jobs), 0
         for q in queries:
             params = {
                 "was": q, "wo": city, "umkreis": bcfg["radius_km"],
@@ -66,6 +68,7 @@ def fetch(cfg: dict, queries: list[str], first_run: bool) -> list[Job]:
                 items = _search(params)
             except Exception as e:  # noqa: BLE001
                 log(f"  BA query failed ({type(e).__name__}: {str(e)[:80]})")
+                failed_q += 1
                 continue
             for it in items:
                 refnr = it.get("refnr") or it.get("referenznummer") or ""
@@ -92,6 +95,10 @@ def fetch(cfg: dict, queries: list[str], first_run: bool) -> list[Job]:
                 )
                 jobs.setdefault(job.id, job)
             time.sleep(1.0)
+        report.source("Bundesagentur", f"Jobsuche {city}", f"https://www.arbeitsagentur.de/jobsuche/suche?wo={city}",
+                      len(jobs) - before, "failed" if failed_q == len(queries) else "ok",
+                      f"{len(queries)} Suchbegriffe, {bcfg['radius_km']} km, letzte {days} Tage"
+                      + (f", {failed_q} Anfragen fehlgeschlagen" if failed_q else ""))
     return list(jobs.values())
 
 

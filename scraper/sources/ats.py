@@ -8,6 +8,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 
 from common import Job, clean_text, get_json, get_text, log
+import report
 
 
 def _workday(e: dict, queries: list[str]) -> list[Job]:
@@ -74,6 +75,19 @@ def _lever(e: dict) -> list[Job]:
                 remote="remote" in (p.get("workplaceType") or "").lower()) for p in data]
 
 
+def _url(e: dict) -> str:
+    t = e["type"]
+    if t == "workday":
+        return f"https://{e['host']}/{e['site']}"
+    if t == "personio":
+        return f"https://{e['id']}.jobs.personio.de"
+    if t == "greenhouse":
+        return f"https://boards.greenhouse.io/{e['id']}"
+    if t == "lever":
+        return f"https://jobs.lever.co/{e['id']}"
+    return ""
+
+
 def fetch(cfg: dict, queries: list[str]) -> tuple[list[Job], int]:
     jobs: list[Job] = []
     failed = 0
@@ -91,9 +105,11 @@ def fetch(cfg: dict, queries: list[str]) -> tuple[list[Job], int]:
             else:
                 continue
             log(f"  {e['name']}: {len(got)} postings")
+            report.source("Bewerbungsportale (ATS)", e["name"], _url(e), len(got))
             jobs += got
         except Exception as ex:  # noqa: BLE001
             log(f"  {e['name']}: feed failed ({type(ex).__name__}: {str(ex)[:80]})")
+            report.source("Bewerbungsportale (ATS)", e["name"], _url(e), 0, "failed", f"{type(ex).__name__}: {str(ex)[:100]}")
             failed += 1
     return jobs, failed
 

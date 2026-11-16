@@ -7,6 +7,7 @@ from __future__ import annotations
 import math
 
 from common import Job, clean_text, log
+import report
 
 
 def _val(v) -> str:
@@ -23,6 +24,8 @@ def fetch(cfg: dict) -> list[Job]:
     jcfg = cfg["jobspy"]
     jobs: dict[str, Job] = {}
     for place in jcfg["places"]:
+        per_site = {s: 0 for s in jcfg["sites"]}
+        failed_q = 0
         for q in jcfg["queries"]:
             try:
                 df = scrape_jobs(
@@ -40,6 +43,7 @@ def fetch(cfg: dict) -> list[Job]:
                 )
             except Exception as e:  # noqa: BLE001
                 log(f"  JobSpy query failed ({type(e).__name__})")
+                failed_q += 1
                 continue
             for row in df.to_dict("records"):
                 job = Job(
@@ -52,6 +56,13 @@ def fetch(cfg: dict) -> list[Job]:
                     posted=_val(row.get("date_posted")),
                     remote=bool(place.get("remote")) or (bool(row.get("is_remote")) if _val(row.get("is_remote")) else False),
                 )
-                if job.title and job.url:
-                    jobs.setdefault(job.id, job)
+                if job.title and job.url and job.id not in jobs:
+                    jobs[job.id] = job
+                    site = _val(row.get("site")).lower()
+                    per_site[site] = per_site.get(site, 0) + 1
+        where = "Remote" if place.get("remote") else place["location"]
+        for site, n in per_site.items():
+            report.source("Jobbörsen (JobSpy)", f"{site.capitalize()} {where}", "", n,
+                          "failed" if failed_q == len(jcfg["queries"]) else "ok",
+                          f"{len(jcfg['queries'])} Suchbegriffe" + (f", {failed_q} fehlgeschlagen" if failed_q else ""))
     return list(jobs.values())

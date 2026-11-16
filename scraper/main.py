@@ -18,10 +18,13 @@ sys.path.insert(0, str(Path(__file__).parent))
 from common import Job, log  # noqa: E402
 from match import Matcher, decide, languages_from_text  # noqa: E402
 import notify  # noqa: E402
+import report  # noqa: E402
 from sources import ats, bundesagentur, jobspy_boards, sites  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 STATE = ROOT / "data" / "state.json"
+RUNS = ROOT / "data" / "runs.json"
+KEEP_RUNS = 30
 
 
 def load_state() -> dict:
@@ -40,6 +43,13 @@ def main() -> int:
     seen: dict[str, str] = state["seen"]
     known = {j["id"] for j in state["jobs"]} | set(seen)
     matcher = Matcher(cfg)
+    started = now
+    postings: list[dict] = []  # transparency log: every posting and what happened to it
+
+    def note(j: Job, outcome: str, reason: str = "", score: int | None = None) -> None:
+        postings.append({"title": j.title[:200], "org": j.org[:120], "location": j.location[:120], "url": j.url,
+                         "source": j.source, "outcome": outcome, "reason": reason[:240],
+                         **({"score": score} if score is not None else {})})
     if not matcher.client:
         log("WARNING: LLM key or PROFILE_JSON missing, requirement check disabled")
 
@@ -74,7 +84,11 @@ def main() -> int:
     fresh: dict[str, Job] = {}
     fresh_fuzzy: set[str] = set()
     for j in collected:
-        if j.id in known or j.id in fresh or ("f:" + j.fuzzy_key) in fuzzy_known or j.fuzzy_key in fresh_fuzzy:
+        if j.id in known or ("f:" + j.fuzzy_key) in fuzzy_known:
+            note(j, "known", "in einem früheren Lauf bereits bewertet")
+            continue
+        if j.id in fresh or j.fuzzy_key in fresh_fuzzy:
+            note(j, "duplicate", "in diesem Lauf schon aus einer anderen Quelle")
             continue
         fresh[j.id] = j
         fresh_fuzzy.add(j.fuzzy_key)
@@ -86,7 +100,9 @@ def main() -> int:
     reasons: dict[str, list[str]] = {"title": [], "location": [], "text": [], "no topic": []}
     for j in fresh.values():
         if not matcher.title_ok(j) or not matcher.location_ok(j):
-            reasons["title" if not matcher.title_ok(j) else "location"].append(f"{j.title} | {j.location}")
+            why = "title" if not matcher.title_ok(j) else "location"
+            reasons[why].append(f"{j.title} | {j.location}")
+            note(j, why, matcher.title_reason(j) if why == "title" else "Ort nicht in der Suchliste und nicht remote")
             seen[j.id] = today
             dropped += 1
             continue
@@ -98,7 +114,9 @@ def main() -> int:
     kept = []
     for j in candidates:
         if not matcher.text_ok(j) or matcher.prefilter_score(j) < cfg["matching"]["min_prefilter_score"]:
-            reasons["text" if not matcher.text_ok(j) else "no topic"].append(j.title)
+            why = "text" if not matcher.text_ok(j) else "no_topic"
+            reasons["text" if why == "text" else "no topic"].append(j.title)
+            note(j, why, matcher.text_reason(j) if why == "text" else "kein Begriff aus den Themen oder Suchbegriffen")
             seen[j.id] = today
             dropped += 1
         else:
@@ -113,16 +131,21 @@ def main() -> int:
     new_entries = []
     counts = {"match": 0, "check": 0, "reject": 0}
     deferred = 0
+    for j in kept[limit:]:
+        note(j, "over_limit", f"mehr als {limit} Kandidaten, wird im nächsten Lauf geprüft", matcher.prefilter_score(j))
     for j in kept[:limit]:
         if matcher.client and matcher.exhausted:
             deferred += 1  # not recorded: checked again on the next run
+            note(j, "deferred", "Gemini-Tageskontingent aufgebraucht, nächster Lauf")
             continue
         result = matcher.check(j) if j.description else None
         if result is None and j.description and matcher.client and matcher.exhausted:
             deferred += 1
+            note(j, "deferred", "Gemini-Tageskontingent aufgebraucht, nächster Lauf")
             continue
         m = decide(j, result, matcher)
         counts[m["status"]] += 1
+        note(j, m["status"], m.get("reject_reason") or ", ".join(m.get("notes") or []) or m.get("summary", ""), m["score"])
         if m["status"] == "reject":
             seen[j.id] = today
             seen["f:" + j.fuzzy_key] = today
@@ -147,6 +170,26 @@ def main() -> int:
                                  "last_run": {"collected": len(collected), "new": len(fresh), **counts,
                                               "failed_sources": len(failed)}},
                                 ensure_ascii=False))
+
+    # Transparency log for the "Läufe" page.
+    runs = json.loads(RUNS.read_text()) if RUNS.exists() and RUNS.stat().st_size else []
+    finished = datetime.now(timezone.utc)
+    runs.insert(0, {
+        "id": started.strftime("%Y%m%d-%H%M%S"),
+        "started": started.isoformat(),
+        "finished": finished.isoformat(),
+        "seconds": int((finished - started).total_seconds()),
+        "trigger": os.environ.get("GITHUB_EVENT_NAME", "local"),
+        "run_url": (f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+                    if os.environ.get("GITHUB_RUN_ID") else ""),
+        "llm": {"provider": matcher.provider, "models": getattr(matcher, "used_models", []), "checked": sum(counts.values()),
+                "limit": limit},
+        "counts": {"collected": len(collected), "new": len(fresh), "dropped": dropped, "candidates": len(kept),
+                   "deferred": deferred, **counts, "failed_sources": len(failed)},
+        "sources": report.SOURCES,
+        "postings": postings,
+    })
+    RUNS.write_text(json.dumps(runs[:KEEP_RUNS], ensure_ascii=False))
 
     if os.environ.get("NOTIFY", "1") == "1":
         notify.send_matches(new_entries, cfg)

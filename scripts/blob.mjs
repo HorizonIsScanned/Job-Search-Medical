@@ -1,40 +1,54 @@
-// Download/upload the board state to the private Vercel Blob store.
-// Usage: node scripts/blob.mjs get|put [file]   (needs BLOB_READ_WRITE_TOKEN)
+// Download/upload the board state and the run log to the private Vercel Blob store.
+// Usage: node scripts/blob.mjs get|put   (needs BLOB_READ_WRITE_TOKEN)
 import { get, put } from '@vercel/blob';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 
-const [cmd, file = 'data/state.json'] = process.argv.slice(2);
-const PATHNAME = 'board/state.json';
+const FILES = [
+  { local: 'data/state.json', remote: 'board/state.json', backup: true },
+  { local: 'data/runs.json', remote: 'board/runs.json', backup: false },
+];
+const cmd = process.argv[2];
+
+await mkdir('data', { recursive: true });
 
 if (!process.env.BLOB_READ_WRITE_TOKEN) {
   console.log('BLOB_READ_WRITE_TOKEN not set: test run without stored state');
-  if (cmd === 'get') {
-    await mkdir(dirname(file), { recursive: true });
-    await writeFile(file, '');
-  }
+  if (cmd === 'get') for (const f of FILES) await writeFile(f.local, '');
   process.exit(0);
 }
 
 if (cmd === 'get') {
-  await mkdir(dirname(file), { recursive: true });
-  const res = await get(PATHNAME, { access: 'private', useCache: false });
-  if (!res) {
-    console.log('no state yet, starting empty');
-    await writeFile(file, '');
-  } else {
+  for (const f of FILES) {
+    // A failed read of the state must stop the run, so it is never overwritten with an empty one.
+    const res = f.backup
+      ? await get(f.remote, { access: 'private', useCache: false })
+      : await get(f.remote, { access: 'private', useCache: false }).catch(() => null);
+    if (!res) {
+      console.log(`${f.remote}: nothing stored yet, starting empty`);
+      await writeFile(f.local, '');
+      continue;
+    }
     const text = await new Response(res.stream).text();
-    await writeFile(file, text);
-    console.log(`state downloaded (${text.length} bytes)`);
+    await writeFile(f.local, text);
+    console.log(`${f.remote} downloaded (${text.length} bytes)`);
   }
 } else if (cmd === 'put') {
-  const body = await readFile(file);
-  // Keep a dated copy as backup, then overwrite the current state.
   const day = new Date().toISOString().slice(0, 10);
-  await put(`board/history/${day}.json`, body, { access: 'private', allowOverwrite: true, contentType: 'application/json' });
-  await put(PATHNAME, body, { access: 'private', allowOverwrite: true, addRandomSuffix: false, contentType: 'application/json' });
-  console.log(`state uploaded (${body.length} bytes)`);
+  for (const f of FILES) {
+    try {
+      await access(f.local);
+    } catch {
+      continue;
+    }
+    const body = await readFile(f.local);
+    if (!body.length) continue;
+    if (f.backup) {
+      await put(`board/history/${day}.json`, body, { access: 'private', allowOverwrite: true, contentType: 'application/json' });
+    }
+    await put(f.remote, body, { access: 'private', allowOverwrite: true, addRandomSuffix: false, contentType: 'application/json' });
+    console.log(`${f.remote} uploaded (${body.length} bytes)`);
+  }
 } else {
-  console.error('usage: blob.mjs get|put [file]');
+  console.error('usage: blob.mjs get|put');
   process.exit(2);
 }

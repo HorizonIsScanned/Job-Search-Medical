@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import type { JobEntry, Language } from './types';
 
 const KIND = { phd: 'Promotion', job: 'Job', other: 'Sonstiges' } as const;
@@ -50,7 +50,7 @@ export default function Board({ jobs, updated }: { jobs: JobEntry[]; updated: st
 
   return (
     <>
-      <nav className="tabs" role="tablist">
+      <div className="segmented" role="tablist" aria-label="Ansicht">
         <button role="tab" aria-selected={tab === 'match'} onClick={() => setTab('match')}>
           Passt <span className="count">{count('match')}</span>
         </button>
@@ -60,7 +60,7 @@ export default function Board({ jobs, updated }: { jobs: JobEntry[]; updated: st
         <button role="tab" aria-selected={tab === 'all'} onClick={() => setTab('all')}>
           Alle <span className="count">{jobs.length}</span>
         </button>
-      </nav>
+      </div>
       <p className="hint">
         {tab === 'match'
           ? 'Alle Pflichtanforderungen sind laut Lebenslauf erfüllt.'
@@ -97,7 +97,9 @@ export default function Board({ jobs, updated }: { jobs: JobEntry[]; updated: st
           return (
             <li key={j.id} className="card">
               <div className="head">
-                <span className="score" title="Passung 0 bis 100">{j.match.score}</span>
+                <span className="ring" style={{ '--p': j.match.score } as CSSProperties} title="Passung von 0 bis 100">
+                  <span>{j.match.score}</span>
+                </span>
                 <div>
                   <a className="title" href={j.url} target="_blank" rel="noopener noreferrer">
                     {j.title}
@@ -109,7 +111,7 @@ export default function Board({ jobs, updated }: { jobs: JobEntry[]; updated: st
                     {j.match.part_time === 'yes' ? ' · Teilzeit möglich' : ''} · via {j.source}
                   </div>
                 </div>
-                {isNew ? <span className="new">neu</span> : null}
+                {isNew ? <span className="badge new">Neu</span> : null}
               </div>
               <p className="summary">{j.match.summary}</p>
               {j.match.notes && j.match.notes.length > 0 && <p className="notes">Hinweis: {j.match.notes.join(', ')}</p>}

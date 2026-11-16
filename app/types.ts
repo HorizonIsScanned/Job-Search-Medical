@@ -33,3 +33,24 @@ export type BoardState = {
   jobs: JobEntry[];
   last_run?: { collected: number; new: number; match: number; check: number; reject: number; failed_sources: number };
 };
+
+export type Outcome =
+  | 'known' | 'duplicate' | 'title' | 'location' | 'text' | 'no_topic'
+  | 'over_limit' | 'deferred' | 'match' | 'check' | 'reject';
+export type RunPosting = {
+  title: string; org: string; location: string; url: string; source: string;
+  outcome: Outcome; reason: string; score?: number;
+};
+export type RunSource = { group: string; name: string; url: string; count: number; status: 'ok' | 'empty' | 'failed'; note: string };
+export type RunCounts = {
+  collected: number; new: number; dropped: number; candidates: number; deferred: number;
+  match: number; check: number; reject: number; failed_sources: number;
+};
+export type Run = {
+  id: string; started: string; finished: string; seconds: number; trigger: string; run_url: string;
+  llm: { provider: string; models: string[]; checked: number; limit: number };
+  counts: RunCounts;
+  sources: RunSource[];
+  postings: RunPosting[];
+};
+export type RunSummary = Omit<Run, 'sources' | 'postings'>;

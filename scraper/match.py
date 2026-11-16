@@ -32,11 +32,26 @@ SCHEMA = {
         },
         "needs_medical_license": {"type": "boolean", "description": "true if a German Approbation, Berufserlaubnis or specialist title is required"},
         "part_time_possible": {"type": "string", "enum": ["yes", "no", "unclear"]},
+        "languages": {
+            "type": "array",
+            "description": "Every language the posting asks for, with the level it states.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "lang": {"type": "string", "enum": ["de", "en", "es", "fr", "other"]},
+                    "level": {"type": "string", "enum": ["A1", "A2", "B1", "B2", "C1", "C2", "native", "unspecified"],
+                              "description": "CEFR level. Map words: Grundkenntnisse=A2, gute=B2, sehr gute/fließend/verhandlungssicher/fluent=C1, Muttersprache/native=native; unspecified if no level is given"},
+                    "mandatory": {"type": "boolean"},
+                },
+                "required": ["lang", "level", "mandatory"],
+                "additionalProperties": False,
+            },
+        },
         "topic": {"type": "string", "description": "Main medical field, in German, 1-3 words"},
         "fit_score": {"type": "integer", "description": "0-100: how well field and tasks match the candidate's interests and goals, ignoring requirements"},
         "summary": {"type": "string", "description": "One German sentence: what the role is and why it fits or not. Do not repeat personal details of the candidate."},
     },
-    "required": ["kind", "requirements", "needs_medical_license", "part_time_possible", "topic", "fit_score", "summary"],
+    "required": ["kind", "requirements", "languages", "needs_medical_license", "part_time_possible", "topic", "fit_score", "summary"],
     "additionalProperties": False,
 }
 
@@ -235,6 +250,36 @@ class Matcher:
             return None
 
 
+_LANG_WORDS = {"de": r"deutsch|german", "en": r"englisch|english", "es": r"spanisch|spanish|español|espanol",
+               "fr": r"französisch|franzoesisch|french"}
+_LEVEL_WORDS = [(r"\b(c2)\b", "C2"), (r"\b(c1)\b", "C1"), (r"\b(b2)\b", "B2"), (r"\b(b1)\b", "B1"),
+                (r"\b(a2)\b", "A2"), (r"\b(a1)\b", "A1"),
+                (r"mutterspra|native", "native"),
+                (r"verhandlungssicher|fließend|fliessend|sehr gut|exzellent|excellent|fluent|business", "C1"),
+                (r"\bgut|good|solide", "B2"), (r"grundkenntnis|basic", "A2")]
+
+
+def languages_from_text(text: str) -> list[dict]:
+    """Rough level per language from the posting text, used when no LLM result has it."""
+    clauses = re.split(r"[.;\n•,]|(?<!- )\bund\b|\band\b|\bsowie\b|\bor\b|\boder\b", (text or "").lower())
+    out = []
+    for lang, pat in _LANG_WORDS.items():
+        found = None
+        for c in clauses:
+            if not re.search(rf"({pat})(\w*)\s*(kenntnisse|sprachkenntnisse|skills|language|sprache|\b)", c) \
+                    or not re.search(r"kenntnis|sprach|skill|language|spricht|speak|fluent|fließend|niveau|level|"
+                                     r"\b[abc][12]\b|mutterspra|native|verhandlungssicher|in wort", c):
+                continue
+            level = next((lvl for lp, lvl in _LEVEL_WORDS if re.search(lp, c)), "unspecified")
+            optional = bool(re.search(r"plus|wünschenswert|von vorteil|vorteilhaft|advantage|desirable|ideally|nice", c))
+            found = {"lang": lang, "level": level, "mandatory": not optional}
+            if level != "unspecified":
+                break
+        if found:
+            out.append(found)
+    return out
+
+
 def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
     """Turn the Claude result into board status: match / check / reject."""
     hits = matcher.topic_hits(job)
@@ -243,7 +288,7 @@ def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
     if result is None:
         return {"status": "check", "score": min(60, matcher.prefilter_score(job)), "topics": topics,
                 "summary": "Nicht automatisch geprüft (keine Beschreibung oder Prüfung fehlgeschlagen).",
-                "requirements": [], "kind": "job"}
+                "requirements": [], "kind": "job", "languages": languages_from_text(job.description)}
     reqs = result.get("requirements") or []
     mandatory = [r for r in reqs if r.get("mandatory")]
     unmet = [r for r in mandatory if r.get("status") == "unmet"]
@@ -277,6 +322,7 @@ def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
         "summary": result.get("summary", ""),
         "part_time": result.get("part_time_possible", "unclear"),
         "requirements": reqs,
+        "languages": result.get("languages") or languages_from_text(job.description),
         "notes": reasons,
     }
 

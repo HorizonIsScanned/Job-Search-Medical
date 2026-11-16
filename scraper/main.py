@@ -16,7 +16,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent))
 
 from common import Job, log  # noqa: E402
-from match import Matcher, decide  # noqa: E402
+from match import Matcher, decide, languages_from_text  # noqa: E402
 import notify  # noqa: E402
 from sources import ats, bundesagentur, jobspy_boards, sites  # noqa: E402
 
@@ -138,6 +138,9 @@ def main() -> int:
     # Keep recent entries, forget old ones.
     cutoff = (now - timedelta(days=cfg["keep_days"])).isoformat()
     jobs = [j for j in state["jobs"] if j.get("first_seen", "") >= cutoff] + new_entries
+    for j in jobs:  # entries from before the language field existed
+        if "languages" not in j["match"]:
+            j["match"]["languages"] = languages_from_text(j.get("description", ""))
     seen = {k: v for k, v in seen.items() if v >= cutoff[:10]}
     STATE.parent.mkdir(exist_ok=True)
     STATE.write_text(json.dumps({"version": 1, "updated": now.isoformat(), "jobs": jobs, "seen": seen,

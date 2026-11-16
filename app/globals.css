@@ -41,3 +41,5 @@ details summary { cursor: pointer; font-size: 13px; color: var(--muted); margin-
 .reqs .unclear span { color: var(--warn); }
 .reqs .unmet span { color: var(--bad); }
 .reqs .optional { color: var(--muted); }
+.chip.lang { color: var(--text); border-color: var(--accent); }
+.chip.lang.optional { color: var(--muted); border-color: var(--line); border-style: dashed; }

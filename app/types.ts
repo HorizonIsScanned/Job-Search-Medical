@@ -1,4 +1,9 @@
 export type Requirement = { text: string; mandatory: boolean; status: 'met' | 'unmet' | 'unclear' };
+export type Language = {
+  lang: 'de' | 'en' | 'es' | 'fr' | 'other';
+  level: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2' | 'native' | 'unspecified';
+  mandatory: boolean;
+};
 export type Match = {
   status: 'match' | 'check' | 'reject';
   score: number;
@@ -8,6 +13,7 @@ export type Match = {
   summary: string;
   part_time?: 'yes' | 'no' | 'unclear';
   requirements: Requirement[];
+  languages?: Language[];
   notes?: string[];
 };
 export type JobEntry = {

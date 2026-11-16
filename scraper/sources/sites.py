@@ -117,7 +117,7 @@ async def _run(sites: list[dict], is_wanted, known_ids: set[str], max_details: i
             try:
                 res = await _crawl(crawler, site["url"])
             except Exception as e:  # noqa: BLE001
-                log(f"  {name}: listing failed ({type(e).__name__})")
+                log(f"  {name}: listing failed ({type(e).__name__}: {str(e)[:100]})")
                 failed += 1
                 continue
             # 1) Listing page may already carry full JobPosting JSON-LD.

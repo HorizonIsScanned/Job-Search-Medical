@@ -23,18 +23,39 @@ remote_words: [remote, homeoffice, home office, home-office, mobiles arbeiten, t
 
 # Search terms for the job boards (Bundesagentur, Indeed, Google, LinkedIn).
 queries:
+  # Clinical studies / CRO
   - Studienkoordinator
-  - Study Nurse
+  - Studienassistenz
   - Clinical Research Associate
+  - Clinical Trial Assistant
+  - Clinical Research Coordinator
+  - Clinical Data Manager
+  # Research and doctorate
   - Wissenschaftliche Mitarbeiterin Medizin
+  - Wissenschaftliche Hilfskraft Medizin
+  - Research Assistant medicine
   - Doktorand Medizin
+  - Promotion Medizin
   - PhD medicine
+  - PhD neuroscience
+  # Medical writing, information, safety, affairs
   - Medical Writer
-  - Medical Information Manager
+  - Medical Information
+  - Medical Affairs
+  - Medical Advisor
   - Pharmakovigilanz
-  - Gynäkologie Forschung
+  - Drug Safety
+  - Medizinische Dokumentation
+  # Health tech, imaging, AI
+  - Medical Expert
+  - Medical Content
+  - Radiologie KI
   - Neuroimaging
+  # Interest fields
+  - Gynäkologie Forschung
   - Ophthalmologie Studie
+  # Languages
+  - Spanish speaking medical
 
 # Topics and weights for the score (0-100 is computed from these + the requirement check).
 topics:
@@ -54,6 +75,10 @@ topics:
     label: Augenheilkunde
     weight: 20
     words: [ophthalmolog, augenheilkunde, augenklinik, retina, netzhaut, glaukom, glaucoma, oct, eye]
+  medical:
+    label: Medizin allgemein
+    weight: 3
+    words: [medizin, medical, klinisch, clinical, patient, gesundheit, health, pharma, medtech, arzt, ärztin, physician, doctor]
   research:
     label: Klinische Forschung
     weight: 10
@@ -113,8 +138,6 @@ exclude_text:
   - approbation als arzt erforderlich
   - approbation ist erforderlich
   - abgeschlossene facharztweiterbildung
-  - deutschkenntnisse auf c1
-  - deutsch c1
   - deutsch auf c2
   - verhandlungssichere deutschkenntnisse
   - deutsch verhandlungssicher
@@ -138,9 +161,15 @@ jobspy:
     - Study Coordinator
     - Studienkoordinator
     - Clinical Research Associate
+    - Clinical Trial Assistant
     - Medical Writer
+    - Medical Affairs
+    - Pharmacovigilance
     - PhD medicine
+    - Research Assistant medical
     - Wissenschaftliche Mitarbeiterin Medizin
+    - Medical Expert
+    - Spanish speaking medical
   places:
     - {location: Berlin, country: germany}
     - {location: Hamburg, country: germany}
@@ -148,6 +177,7 @@ jobspy:
     - {location: München, country: germany}
     - {location: Wien, country: austria}
     - {location: Zürich, country: switzerland}
+    - {location: Germany, country: germany, remote: true}
 
 # Career pages and niche boards, read with crawl4ai. Each listing page is
 # rendered, links that look like job postings are collected (link_pattern),
@@ -167,10 +197,22 @@ sites:
   - name: EURAXESS
     url: https://euraxess.ec.europa.eu/jobs/search?keywords=neuroimaging%20phd
     link_pattern: /jobs/\d+
+  - name: EURAXESS
+    url: https://euraxess.ec.europa.eu/jobs/search?keywords=phd%20medicine
+    link_pattern: /jobs/\d+
+  - name: EURAXESS
+    url: https://euraxess.ec.europa.eu/jobs/search?keywords=ophthalmology
+    link_pattern: /jobs/\d+
+  - name: EURAXESS
+    url: https://euraxess.ec.europa.eu/jobs/search?keywords=radiology
+    link_pattern: /jobs/\d+
   - name: Berlin Institute of Health
-    url: https://www.bihealth.org/en/career/job-offers
-    link_pattern: /job-offers/|/stellenangebote/|/jobs?/
+    url: https://jobs.bihealth.org/eng
+    link_pattern: -j\d+\.html
     location: Berlin
+  - name: ICON
+    url: https://careers.iconplc.com/jobs?location=germany
+    link_pattern: /job/.+-jid-\d+
   - name: DZNE
     url: https://www.dzne.de/en/career/job-offers/
     link_pattern: /job-offers/|/stellenangebote/|jobs
@@ -194,7 +236,6 @@ sites:
 # are skipped with a warning if the feed does not answer.
 ats:
   - {type: workday, name: IQVIA, host: iqvia.wd1.myworkdayjobs.com, tenant: iqvia, site: IQVIA}
-  - {type: workday, name: ICON, host: iconplc.wd3.myworkdayjobs.com, tenant: iconplc, site: broadbean_external}
   - {type: workday, name: Parexel, host: parexel.wd1.myworkdayjobs.com, tenant: parexel, site: Parexel_External_Careers}
   - {type: workday, name: Syneos Health, host: syneoshealth.wd12.myworkdayjobs.com, tenant: syneoshealth, site: syneos_health_external_site}
 
@@ -209,7 +250,7 @@ matching:
   model: claude-sonnet-5-5         # used when provider is claude
   fallback_model: claude-haiku-5-5  # used when the free Gemini quota is used up (needs ANTHROPIC_API_KEY)
   effort: low
-  max_llm_checks_per_run: 80
+  max_llm_checks_per_run: 200
   min_prefilter_score: 1     # at least one topic word or query hit
 notify:
   min_score: 60

@@ -238,7 +238,8 @@ class Matcher:
 def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
     """Turn the Claude result into board status: match / check / reject."""
     hits = matcher.topic_hits(job)
-    topics = [matcher.topics[k]["label"] for k in sorted(hits, key=lambda k: -matcher.topics[k]["weight"])]
+    topics = [matcher.topics[k]["label"] for k in sorted(hits, key=lambda k: -matcher.topics[k]["weight"])
+              if k != "medical"]  # the broad catch-all topic only feeds the prefilter
     if result is None:
         return {"status": "check", "score": min(60, matcher.prefilter_score(job)), "topics": topics,
                 "summary": "Nicht automatisch geprüft (keine Beschreibung oder Prüfung fehlgeschlagen).",

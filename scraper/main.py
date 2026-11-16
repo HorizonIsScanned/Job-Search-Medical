@@ -83,8 +83,10 @@ def main() -> int:
     # Cheap rules first.
     candidates = []
     dropped = 0
+    reasons: dict[str, list[str]] = {"title": [], "location": [], "text": [], "no topic": []}
     for j in fresh.values():
-        if not (matcher.title_ok(j) and matcher.location_ok(j)):
+        if not matcher.title_ok(j) or not matcher.location_ok(j):
+            reasons["title" if not matcher.title_ok(j) else "location"].append(f"{j.title} | {j.location}")
             seen[j.id] = today
             dropped += 1
             continue
@@ -96,10 +98,14 @@ def main() -> int:
     kept = []
     for j in candidates:
         if not matcher.text_ok(j) or matcher.prefilter_score(j) < cfg["matching"]["min_prefilter_score"]:
+            reasons["text" if not matcher.text_ok(j) else "no topic"].append(j.title)
             seen[j.id] = today
             dropped += 1
         else:
             kept.append(j)
+    for why, titles in reasons.items():
+        # Job titles and places only (public posting data, no profile content).
+        log(f"  dropped for {why}: {len(titles)}; e.g. {titles[:12]}")
     kept.sort(key=matcher.prefilter_score, reverse=True)
     limit = cfg["matching"]["max_llm_checks_per_run"]
     log(f"rules dropped {dropped}, checking {min(len(kept), limit)} of {len(kept)}")

@@ -34,6 +34,7 @@ def fetch(cfg: dict) -> list[Job]:
                     results_wanted=jcfg["results_wanted"],
                     hours_old=jcfg["hours_old"],
                     linkedin_fetch_description=True,
+                    is_remote=bool(place.get("remote")),
                     description_format="markdown",
                     verbose=0,
                 )
@@ -49,7 +50,7 @@ def fetch(cfg: dict) -> list[Job]:
                     source=_val(row.get("site")).capitalize() or "JobSpy",
                     description=clean_text(_val(row.get("description"))),
                     posted=_val(row.get("date_posted")),
-                    remote=bool(row.get("is_remote")) if _val(row.get("is_remote")) else False,
+                    remote=bool(place.get("remote")) or (bool(row.get("is_remote")) if _val(row.get("is_remote")) else False),
                 )
                 if job.title and job.url:
                     jobs.setdefault(job.id, job)

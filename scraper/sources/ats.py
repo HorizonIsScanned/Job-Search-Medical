@@ -13,16 +13,25 @@ from common import Job, clean_text, get_json, get_text, log
 def _workday(e: dict, queries: list[str]) -> list[Job]:
     base = f"https://{e['host']}/wday/cxs/{e['tenant']}/{e['site']}"
     seen: dict[str, Job] = {}
+    errors = 0
     for q in queries:
-        data = get_json(f"{base}/jobs", method="POST",
-                        body={"appliedFacets": {}, "limit": 20, "offset": 0, "searchText": q},
-                        headers={"Content-Type": "application/json", "Accept": "application/json"})
+        try:
+            data = get_json(f"{base}/jobs", method="POST",
+                            body={"appliedFacets": {}, "limit": 20, "offset": 0, "searchText": q},
+                            headers={"Content-Type": "application/json", "Accept": "application/json"})
+        except Exception as ex:  # noqa: BLE001
+            errors += 1
+            if errors == 1:
+                log(f"  {e['name']}: query failed ({str(ex)[:80]})")
+            continue
         for p in data.get("jobPostings") or []:
             path = p.get("externalPath", "")
             url = f"https://{e['host']}/{e['site']}{path}"
             j = Job(title=p.get("title", ""), org=e["name"], location=p.get("locationsText", ""),
                     url=url, source=e["name"], posted=p.get("postedOn", ""), extra={"wd_path": path, "wd_base": base})
             seen.setdefault(j.id, j)
+    if errors == len(queries):
+        raise RuntimeError("all queries failed")
     return list(seen.values())
 
 
@@ -84,7 +93,7 @@ def fetch(cfg: dict, queries: list[str]) -> tuple[list[Job], int]:
             log(f"  {e['name']}: {len(got)} postings")
             jobs += got
         except Exception as ex:  # noqa: BLE001
-            log(f"  {e['name']}: feed failed ({type(ex).__name__})")
+            log(f"  {e['name']}: feed failed ({type(ex).__name__}: {str(ex)[:80]})")
             failed += 1
     return jobs, failed
 

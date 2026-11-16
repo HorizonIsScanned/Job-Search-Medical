@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -133,7 +134,15 @@ def main() -> int:
     deferred = 0
     for j in kept[limit:]:
         note(j, "over_limit", f"mehr als {limit} Kandidaten, wird im nächsten Lauf geprüft", matcher.prefilter_score(j))
-    for j in kept[:limit]:
+    budget = cfg["matching"].get("max_check_minutes", 60) * 60
+    t0 = time.monotonic()
+    for i, j in enumerate(kept[:limit]):
+        if i and i % 20 == 0:
+            log(f"  checked {i} of {min(len(kept), limit)} in {int(time.monotonic() - t0)} s")
+        if time.monotonic() - t0 > budget:
+            deferred += 1  # time budget: leave room to save results before the job timeout
+            note(j, "deferred", "Zeitbudget des Laufs erreicht, nächster Lauf", matcher.prefilter_score(j))
+            continue
         if matcher.client and matcher.exhausted:
             deferred += 1  # not recorded: checked again on the next run
             note(j, "deferred", "Gemini-Tageskontingent aufgebraucht, nächster Lauf")

@@ -173,7 +173,8 @@ class Matcher:
             self.gemini_models = self._gemini_candidates(gcfg.get("model", ""))
         while self.gemini_models:
             model = self.gemini_models[0]
-            for attempt in range(5):
+            last = ""
+            for attempt in range(4):
                 try:
                     resp = self.client.models.generate_content(
                         model=model,
@@ -186,6 +187,7 @@ class Matcher:
                         ),
                     )
                     time.sleep(gcfg.get("pause_seconds", 4))  # stay under the free-tier per-minute limit
+                    self.fails = 0
                     self.used_models = getattr(self, "used_models", [])
                     if model not in self.used_models:
                         self.used_models.append(model)
@@ -195,20 +197,26 @@ class Matcher:
                         return None
                 except Exception as e:  # noqa: BLE001
                     msg = str(e)
+                    last = f"{type(e).__name__}: {msg[:160]}"
                     if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
-                        if "per day" in msg.lower() or "PerDay" in msg or attempt >= 2:
+                        if "per day" in msg.lower() or "PerDay" in msg or attempt >= 1:
                             log(f"  Gemini quota reached for {model}, trying next model")
                             break
-                        time.sleep(30 * (attempt + 1))
+                        time.sleep(20)
                         continue
                     if "503" in msg or "UNAVAILABLE" in msg or "500" in msg:
-                        time.sleep(15 * (attempt + 1))
+                        time.sleep(10 * (attempt + 1))
                         continue
-                    log(f"  Gemini check failed ({type(e).__name__}: {msg[:200]})")
+                    log(f"  Gemini check failed ({last})")
                     return None
             else:
-                log(f"  Gemini {model} keeps failing, skipping posting")
-                return None
+                # Two postings in a row failing on one model: stop waiting on it, use the next one.
+                self.fails = getattr(self, "fails", 0) + 1
+                log(f"  Gemini {model} keeps failing ({last}), skipping posting")
+                if self.fails < 2:
+                    return None
+                self.fails = 0
+                log(f"  giving up on {model}")
             self.gemini_models.pop(0)
             if self.gemini_models:
                 log(f"  Gemini model: {self.gemini_models[0]}")

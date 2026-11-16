@@ -206,13 +206,8 @@ sites:
   - name: EURAXESS
     url: https://euraxess.ec.europa.eu/jobs/search?keywords=radiology
     link_pattern: /jobs/\d+
-  - name: Berlin Institute of Health
-    url: https://jobs.bihealth.org/eng
-    link_pattern: -j\d+\.html
-    location: Berlin
-  - name: ICON
-    url: https://careers.iconplc.com/jobs?location=germany
-    link_pattern: /job/.+-jid-\d+
+  # Not included: Berlin Institute of Health (Cloudflare bot check) and ICON (robots.txt forbids crawling).
+  # Their German postings still arrive through the Bundesagentur and job boards.
   - name: DZNE
     url: https://www.dzne.de/en/career/job-offers/
     link_pattern: /job-offers/|/stellenangebote/|jobs
@@ -251,6 +246,7 @@ matching:
   fallback_model: claude-haiku-5-5  # used when the free Gemini quota is used up (needs ANTHROPIC_API_KEY)
   effort: low
   max_llm_checks_per_run: 200
+  max_check_minutes: 60      # stop checking after this, rest goes to the next run (job timeout 120 min)
   min_prefilter_score: 1     # at least one topic word or query hit
 notify:
   min_score: 60

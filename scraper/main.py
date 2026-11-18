@@ -6,6 +6,7 @@ Blob store by scripts/blob.mjs; it is never committed.
 from __future__ import annotations
 
 import json
+from collections import Counter
 import os
 import sys
 import time
@@ -44,7 +45,8 @@ def matcher_loc_ok(cfg: dict, entry: dict) -> bool:
     m.loc_aliases = [a.lower() for loc in cfg["locations"] for a in loc["aliases"]]
     m.remote_words = [w.lower() for w in cfg.get("remote_words", [])]
     return m.location_ok(Job(title=entry.get("title", ""), org="", location=entry.get("location", ""),
-                             url=entry.get("url", ""), source="", remote=bool(entry.get("remote"))))
+                             url=entry.get("url", ""), source="",
+                             remote=bool(entry["match"].get("fully_remote", entry.get("remote")))))
 
 
 def main() -> int:
@@ -194,6 +196,9 @@ def main() -> int:
         entry["first_seen"] = now.isoformat()
         entry["match"] = m
         new_entries.append(entry)
+    why_reject = Counter(p["reason"].split(";")[0].split(":")[0].split("(")[0].strip()
+                         for p in postings if p["outcome"] == "reject")
+    log(f"reject reasons (first rule hit): {dict(why_reject.most_common())}")
     log(f"result: {counts['match']} match, {counts['check']} check, {counts['reject']} reject, {deferred} deferred to next run")
 
     # Keep recent entries, forget old ones.

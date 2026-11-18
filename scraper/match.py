@@ -370,7 +370,7 @@ def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
     years = float(result.get("min_years_experience") or 0)
     deadline = (result.get("deadline") or "")[:10]
     place = result.get("work_location") or job.location
-    remote = bool(result.get("fully_remote") or job.remote)
+    remote = bool(result.get("fully_remote"))  # from the text; board "remote" flags are unreliable
     reasons = []
     hard = []  # reasons that rule a posting out, in the order shown
     if kind == "other":
@@ -422,6 +422,7 @@ def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
         "requirements": reqs,
         "languages": languages,
         "role": role,
+        "fully_remote": remote,
         "field_fit": result.get("field_fit", ""),
         "years": years,
         "deadline": deadline,

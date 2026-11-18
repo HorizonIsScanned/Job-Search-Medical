@@ -9,7 +9,11 @@ import json
 import os
 import re
 
+from datetime import date
+
 from common import Job, log
+
+TODAY = date.today().isoformat()
 
 SCHEMA = {
     "type": "object",
@@ -47,11 +51,28 @@ SCHEMA = {
                 "additionalProperties": False,
             },
         },
+        "role_type": {"type": "string",
+                      "enum": ["phd", "study_assistant", "research_assistant", "physician", "medical_writing_info",
+                               "monitoring_management", "lab_technical", "other"],
+                      "description": "phd = doctoral position or PhD programme; study_assistant = Studienassistenz, Clinical Trial Assistant, study coordinator, clinical research coordinator; research_assistant = research assistant, wissenschaftliche Hilfskraft, junior wissenschaftliche Mitarbeiterin in a research project; physician = treats patients as a doctor; medical_writing_info = medical writing, information, affairs, pharmacovigilance; monitoring_management = CRA/monitor, project or study manager, lead roles; lab_technical = bench lab work, technician; other = anything else"},
+        "min_years_experience": {"type": "number",
+                                 "description": "Minimum years of professional experience the posting explicitly REQUIRES. 0 if no number of years is required, or if it only asks for first experience or calls experience desirable."},
+        "advanced_lab_skills_required": {"type": "boolean",
+                                         "description": "true if mandatory: cell culture, PCR, molecular biology or other wet-lab methods, animal experiments, or similar advanced lab work"},
+        "closed": {"type": "boolean",
+                   "description": "true if the posting says it is no longer accepting applications, is filled or expired, or its application deadline is before {today}"},
+        "deadline": {"type": "string", "description": "Application deadline as YYYY-MM-DD, empty if none is stated"},
+        "work_location": {"type": "string", "description": "City and country where the work takes place, e.g. 'Berlin, Deutschland'; empty if not stated"},
+        "fully_remote": {"type": "boolean", "description": "true if the role can be done fully remotely from Germany"},
+        "field_fit": {"type": "string", "enum": ["core", "related", "distant"],
+                      "description": "core = women's health (gynaecology, obstetrics, maternal health, menopause), epidemiology, public health or preventive medicine; related = other clinical or health research that builds on the candidate's research or clinical experience (e.g. clinical trials in general, nutrition, neurology, ophthalmology, imaging); distant = a field far from the candidate's experience (e.g. basic molecular biology, engineering, veterinary)"},
         "topic": {"type": "string", "description": "Main medical field, in German, 1-3 words"},
         "fit_score": {"type": "integer", "description": "0-100: how well field and tasks match the candidate's interests and goals, ignoring requirements"},
         "summary": {"type": "string", "description": "One German sentence: what the role is and why it fits or not. Do not repeat personal details of the candidate."},
     },
-    "required": ["kind", "requirements", "languages", "needs_medical_license", "part_time_possible", "topic", "fit_score", "summary"],
+    "required": ["kind", "role_type", "requirements", "languages", "needs_medical_license", "min_years_experience",
+                 "advanced_lab_skills_required", "closed", "deadline", "work_location", "fully_remote", "field_fit",
+                 "part_time_possible", "topic", "fit_score", "summary"],
     "additionalProperties": False,
 }
 
@@ -63,6 +84,9 @@ Extract every requirement the posting states and judge each one strictly against
 - unclear: the posting is vague ("gute Deutschkenntnisse", "erste Erfahrung") or the profile does not say.
 Never assume skills that are not in the profile. A requirement for a degree in medicine is met by the profile's M.D.
 Mark a requirement mandatory unless the posting calls it desirable, an advantage, or optional.
+German: a requirement of German up to B2 ("gute Deutschkenntnisse", "Deutsch B2") counts as met, because the candidate
+will hold B2 soon. C1 or higher ("sehr gute", "fließend", "verhandlungssicher", C1, C2, Muttersprache) is unmet.
+Today is {today}.
 Write requirement texts and the summary in German.
 
 <candidate_profile>
@@ -97,6 +121,12 @@ class Matcher:
         elif self.claude:
             self.provider = "claude"
             self.client = self.claude
+
+    def system(self) -> str:
+        return SYSTEM.replace("{profile}", self.profile).replace("{today}", TODAY)
+
+    def schema(self) -> dict:
+        return json.loads(json.dumps(SCHEMA).replace("{today}", TODAY))
 
     # --- cheap rules -------------------------------------------------------
     def title_ok(self, job: Job) -> bool:
@@ -180,9 +210,9 @@ class Matcher:
                         model=model,
                         contents=f"<posting>\n{posting}\n</posting>",
                         config=types.GenerateContentConfig(
-                            system_instruction=SYSTEM.replace("{profile}", self.profile),
+                            system_instruction=self.system(),
                             response_mime_type="application/json",
-                            response_json_schema=SCHEMA,
+                            response_json_schema=self.schema(),
                             temperature=0,
                         ),
                     )
@@ -256,10 +286,10 @@ class Matcher:
                 max_tokens=4000,
                 **extra,
                 cache_control={"type": "ephemeral"},
-                system=SYSTEM.replace("{profile}", self.profile),
+                system=self.system(),
                 messages=[{"role": "user", "content": f"<posting>\n{posting}\n</posting>"}],
                 output_config={"effort": self.mcfg.get("effort", "low"),
-                               "format": {"type": "json_schema", "schema": SCHEMA}},
+                               "format": {"type": "json_schema", "schema": self.schema()}},
             )
         except Exception as e:  # noqa: BLE001
             log(f"  Claude check failed ({type(e).__name__}: {str(e)[:200]})")
@@ -303,6 +333,13 @@ def languages_from_text(text: str) -> list[dict]:
     return out
 
 
+LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2", "native"]
+ROLE_LABELS = {"phd": "Promotion / PhD", "study_assistant": "Studienassistenz / Studienkoordination",
+               "research_assistant": "Research Assistant / wiss. Hilfskraft", "physician": "ärztliche Tätigkeit",
+               "medical_writing_info": "Medical Writing / Information", "monitoring_management": "Monitoring / Management",
+               "lab_technical": "Labor / Technik", "other": "andere Rolle"}
+
+
 def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
     """Turn the Claude result into board status: match / check / reject."""
     hits = matcher.topic_hits(job)
@@ -318,16 +355,41 @@ def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
     unclear = [r for r in mandatory if r.get("status") == "unclear"]
     score = int(result.get("fit_score") or 0)
     kind = result.get("kind", "job")
+    role = result.get("role_type", "other")
+    rules = matcher.mcfg.get("rules", {})
+    languages = result.get("languages") or languages_from_text(job.description)
+    german = max((LEVELS.index(lg["level"]) for lg in languages
+                  if lg.get("lang") == "de" and lg.get("mandatory") and lg.get("level") in LEVELS), default=-1)
+    max_german = LEVELS.index(rules.get("max_german", "B2"))
+    years = float(result.get("min_years_experience") or 0)
+    deadline = (result.get("deadline") or "")[:10]
+    place = result.get("work_location") or job.location
+    remote = bool(result.get("fully_remote") or job.remote)
     reasons = []
-    reject_reason = ""
+    hard = []  # reasons that rule a posting out, in the order shown
     if kind == "other":
+        hard.append("keine Stellenanzeige (z. B. Kurs, Veranstaltung, Übersicht)")
+    if result.get("closed") or (re.fullmatch(r"\d{4}-\d{2}-\d{2}", deadline) and deadline < TODAY):
+        hard.append("Bewerbung nicht mehr möglich" + (f" (Frist {deadline})" if deadline else ""))
+    if result.get("needs_medical_license"):
+        hard.append("Approbation oder Facharzttitel nötig")
+    if german > max_german:
+        hard.append(f"Deutsch {LEVELS[german]} verlangt (höchstens {LEVELS[max_german]})")
+    if years > rules.get("max_years_experience", 0):
+        hard.append(f"{years:g} Jahre Berufserfahrung verlangt")
+    if result.get("advanced_lab_skills_required"):
+        hard.append("Laborarbeit wie Zellkultur oder Molekularbiologie verlangt")
+    allowed = rules.get("allowed_roles") or list(ROLE_LABELS)
+    if kind != "other" and role not in allowed:
+        hard.append(f"Rolle passt nicht: {ROLE_LABELS.get(role, role)}")
+    if result.get("field_fit") == "distant":
+        hard.append("Fachgebiet zu weit von ihrer Erfahrung entfernt")
+    if place and not remote and not any(a in place.lower() for a in matcher.loc_aliases):
+        hard.append(f"Ort passt nicht: {place[:60]}")
+    hard += [f"Nicht erfüllt: {r.get('text', '')}" for r in unmet if r.get("text")]
+    reject_reason = "; ".join(hard)
+    if hard:
         status = "reject"
-        reject_reason = "keine Stellenanzeige (z. B. Kurs, Veranstaltung, Übersicht)"
-    elif result.get("needs_medical_license") or unmet:
-        status = "reject"
-        parts = (["Approbation oder Facharzttitel nötig"] if result.get("needs_medical_license") else []) + \
-                [r.get("text", "") for r in unmet]
-        reject_reason = "Nicht erfüllt: " + "; ".join(p for p in parts if p)
     elif unclear:
         status = "check"
         reasons.append("Pflichtanforderung unklar")
@@ -338,7 +400,9 @@ def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
         reasons.append("keine Teilzeit")
     if result.get("part_time_possible") == "yes":
         score = min(100, score + 5)
-    if not job.location and status == "match":
+    if result.get("field_fit") == "core":
+        score = min(100, score + 10)
+    if not place and not remote and status == "match":
         status = "check"
         reasons.append("Ort unbekannt")
     return {
@@ -350,7 +414,11 @@ def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
         "summary": result.get("summary", ""),
         "part_time": result.get("part_time_possible", "unclear"),
         "requirements": reqs,
-        "languages": result.get("languages") or languages_from_text(job.description),
+        "languages": languages,
+        "role": role,
+        "field_fit": result.get("field_fit", ""),
+        "years": years,
+        "deadline": deadline,
         "notes": reasons,
         **({"reject_reason": reject_reason} if reject_reason else {}),
     }

@@ -15,6 +15,10 @@ export type Match = {
   requirements: Requirement[];
   languages?: Language[];
   notes?: string[];
+  role?: string;
+  field_fit?: 'core' | 'related' | 'distant' | '';
+  years?: number;
+  deadline?: string;
 };
 export type JobEntry = {
   id: string;

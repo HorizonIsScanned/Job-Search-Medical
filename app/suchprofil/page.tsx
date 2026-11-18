@@ -17,12 +17,19 @@ type Cfg = {
   jobspy: { enabled: boolean; sites: string[]; results_wanted: number; hours_old: number; queries: string[]; places: { location: string; remote?: boolean }[] };
   sites: { name: string; url: string }[];
   ats: { type: string; name: string }[];
-  matching: { provider: string; max_llm_checks_per_run: number; min_prefilter_score: number };
+  matching: { provider: string; max_llm_checks_per_run: number; min_prefilter_score: number;
+    rules?: { allowed_roles: string[]; max_german: string; max_years_experience: number } };
   notify: { min_score: number; high_priority_score: number; max_items: number; max_failed_sources: number };
   keep_days: number;
 };
 
 const SITE = { indeed: 'Indeed', google: 'Google Jobs', linkedin: 'LinkedIn' } as Record<string, string>;
+
+const ROLE_NAMES: Record<string, string> = {
+  phd: 'Promotion / PhD',
+  study_assistant: 'Studienassistenz, Clinical Trial Assistant, Study Coordinator',
+  research_assistant: 'Research Assistant und wissenschaftliche Hilfskraft',
+};
 
 export default function Suchprofil() {
   const cfg = parse(readFileSync(join(process.cwd(), 'config', 'search.yaml'), 'utf8')) as Cfg;
@@ -72,6 +79,19 @@ export default function Suchprofil() {
         <div className="rule"><span className="pill match">Passt</span><span>Alle Pflichtanforderungen sind laut Lebenslauf erfüllt, Teilzeit ist möglich oder unklar, der Ort ist bekannt.</span></div>
         <div className="rule"><span className="pill check">Prüfen</span><span>Mindestens eine Pflichtanforderung ist unklar (z. B. „gute Deutschkenntnisse“), oder es gibt keine Teilzeit, oder der Ort fehlt.</span></div>
         <div className="rule"><span className="pill reject">Abgelehnt</span><span>Mindestens eine Pflichtanforderung ist nicht erfüllt, eine Approbation oder ein Facharzttitel ist nötig, oder es ist keine Stellenanzeige. Wird nie angezeigt.</span></div>
+      </div>
+
+      <h2>Harte Ausschlüsse</h2>
+      <p className="section-lede">Jede dieser Bedingungen führt immer zu „Abgelehnt“, egal wie gut die Stelle sonst passt.</p>
+      <div className="group">
+        <div className="rule"><span className="pill reject">Rolle</span><span>Nur {(cfg.matching.rules?.allowed_roles ?? []).map((r) => ROLE_NAMES[r] ?? r).join(', ')}.</span></div>
+        <div className="rule"><span className="pill reject">Deutsch</span><span>Verlangt die Anzeige mehr als {cfg.matching.rules?.max_german ?? 'B2'} (z. B. „sehr gute“ oder „verhandlungssichere“ Deutschkenntnisse, C1), fällt sie raus. „Gute Deutschkenntnisse“ (B2) sind in Ordnung.</span></div>
+        <div className="rule"><span className="pill reject">Erfahrung</span><span>{(cfg.matching.rules?.max_years_experience ?? 0) === 0 ? 'Keine geforderten Berufsjahre. „Erste Erfahrung“ oder „von Vorteil“ ist in Ordnung.' : `Höchstens ${cfg.matching.rules?.max_years_experience} Jahre Berufserfahrung.`}</span></div>
+        <div className="rule"><span className="pill reject">Approbation</span><span>Keine Stellen, die eine Approbation, Berufserlaubnis oder einen Facharzttitel verlangen.</span></div>
+        <div className="rule"><span className="pill reject">Labor</span><span>Keine Stellen mit Pflicht zu Zellkultur, PCR, Molekularbiologie oder Tierversuchen.</span></div>
+        <div className="rule"><span className="pill reject">Fachgebiet</span><span>Schwerpunkt Frauengesundheit, Epidemiologie, Public Health und Prävention. Verwandte klinische Forschung ist erlaubt, weit entfernte Gebiete nicht.</span></div>
+        <div className="rule"><span className="pill reject">Ort</span><span>Nur die Orte unten oder remote. Stellen im Ausland außerhalb dieser Orte fallen raus.</span></div>
+        <div className="rule"><span className="pill reject">Frist</span><span>Abgelaufene oder geschlossene Ausschreibungen fallen raus, auch nachträglich vom Board.</span></div>
       </div>
 
       <div className="grid2" style={{ marginTop: 14 }}>

@@ -38,6 +38,10 @@ def main() -> int:
     cfg = yaml.safe_load((ROOT / "config" / "search.yaml").read_text())
     only = set(filter(None, os.environ.get("ONLY_SOURCES", "").split(",")))
     state = load_state()
+    if os.environ.get("FRESH_START") == "true":
+        # Search rules changed: forget earlier verdicts so every posting is judged again (backup stays in Blob history).
+        log(f"fresh start: clearing {len(state['jobs'])} board entries and {len(state['seen'])} seen ids")
+        state = {**state, "jobs": [], "seen": {}}
     first_run = not state["jobs"] and not state["seen"]
     now = datetime.now(timezone.utc)
     today = now.date().isoformat()
@@ -169,7 +173,8 @@ def main() -> int:
 
     # Keep recent entries, forget old ones.
     cutoff = (now - timedelta(days=cfg["keep_days"])).isoformat()
-    jobs = [j for j in state["jobs"] if j.get("first_seen", "") >= cutoff] + new_entries
+    jobs = [j for j in state["jobs"] if j.get("first_seen", "") >= cutoff
+            and not ("" < (j["match"].get("deadline") or "") < today)] + new_entries  # drop passed deadlines
     for j in jobs:  # entries from before the language field existed
         if "languages" not in j["match"]:
             j["match"]["languages"] = languages_from_text(j.get("description", ""))

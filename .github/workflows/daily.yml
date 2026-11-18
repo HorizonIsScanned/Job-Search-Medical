@@ -15,6 +15,10 @@ on:
         description: "Only these sources (comma list: bundesagentur,jobspy,ats,sites), empty = all"
         type: string
         default: ""
+      fresh_start:
+        description: "Forget earlier verdicts and judge all postings again"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -37,6 +41,7 @@ jobs:
       NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
       NTFY_ALERT_TOPIC: ${{ secrets.NTFY_ALERT_TOPIC }}
       BOARD_URL: ${{ vars.BOARD_URL }}
+      FRESH_START: ${{ inputs.fresh_start }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       NOTIFY: ${{ (github.event_name == 'schedule' || inputs.notify) && '1' || '0' }}
       ONLY_SOURCES: ${{ inputs.only_sources }}

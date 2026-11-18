@@ -5,6 +5,7 @@ employers expose their career page as JSON/XML, which is stabler than HTML.
 """
 from __future__ import annotations
 
+import time
 import xml.etree.ElementTree as ET
 
 from common import Job, clean_text, get_json, get_text, log
@@ -15,7 +16,9 @@ def _workday(e: dict, queries: list[str]) -> list[Job]:
     base = f"https://{e['host']}/wday/cxs/{e['tenant']}/{e['site']}"
     seen: dict[str, Job] = {}
     errors = 0
-    for q in queries:
+    for i, q in enumerate(queries):
+        if i:
+            time.sleep(1.5)  # Workday answers 429 to quick bursts
         try:
             data = get_json(f"{base}/jobs", method="POST",
                             body={"appliedFacets": {}, "limit": 20, "offset": 0, "searchText": q},

@@ -3,6 +3,11 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import type { JobEntry, Language } from './types';
 
+const ROLE: Record<string, string> = {
+  phd: 'Promotion / PhD',
+  study_assistant: 'Studienassistenz / Koordination',
+  research_assistant: 'Research Assistant / Hilfskraft',
+};
 const KIND = { phd: 'Promotion', job: 'Job', other: 'Sonstiges' } as const;
 const LANG = { de: 'Deutsch', en: 'Englisch', es: 'Spanisch', fr: 'Französisch', other: 'Andere' } as const;
 const RANK: Record<Language['level'], number> = { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, C2: 6, native: 7, unspecified: 0 };
@@ -106,7 +111,8 @@ export default function Board({ jobs, updated }: { jobs: JobEntry[]; updated: st
                   </a>
                   <div className="meta">
                     {j.org} · {j.location || 'Ort unbekannt'}
-                    {j.remote ? ' · remote' : ''} · {KIND[j.match.kind] ?? 'Job'}
+                    {j.remote ? ' · remote' : ''} · {ROLE[j.match.role ?? ''] ?? KIND[j.match.kind] ?? 'Job'}
+                    {j.match.deadline ? ` · Frist ${j.match.deadline.split('-').reverse().join('.')}` : ''}
                     {tab === 'all' ? (j.match.status === 'match' ? ' · passt' : ' · prüfen') : ''}
                     {j.match.part_time === 'yes' ? ' · Teilzeit möglich' : ''} · via {j.source}
                   </div>

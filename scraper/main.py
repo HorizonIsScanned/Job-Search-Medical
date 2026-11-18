@@ -42,6 +42,9 @@ def main() -> int:
         # Search rules changed: forget earlier verdicts so every posting is judged again (backup stays in Blob history).
         log(f"fresh start: clearing {len(state['jobs'])} board entries and {len(state['seen'])} seen ids")
         state = {**state, "jobs": [], "seen": {}}
+    # Entries that could not be checked (model overloaded) leave the board and are collected and checked again.
+    state["jobs"] = [j for j in state["jobs"]
+                     if not j["match"].get("summary", "").startswith("Nicht automatisch geprüft") or not j.get("description")]
     first_run = not state["jobs"] and not state["seen"]
     now = datetime.now(timezone.utc)
     today = now.date().isoformat()
@@ -152,9 +155,10 @@ def main() -> int:
             note(j, "deferred", "Gemini-Tageskontingent aufgebraucht, nächster Lauf")
             continue
         result = matcher.check(j) if j.description else None
-        if result is None and j.description and matcher.client and matcher.exhausted:
-            deferred += 1
-            note(j, "deferred", "Gemini-Tageskontingent aufgebraucht, nächster Lauf")
+        if result is None and j.description and matcher.client:
+            deferred += 1  # quota used up or model overloaded: not recorded, checked again next run
+            note(j, "deferred", "Gemini-Tageskontingent aufgebraucht, nächster Lauf" if matcher.exhausted
+                 else "Prüfung fehlgeschlagen (Gemini überlastet), nächster Lauf")
             continue
         m = decide(j, result, matcher)
         counts[m["status"]] += 1
@@ -179,6 +183,11 @@ def main() -> int:
         if "languages" not in j["match"]:
             j["match"]["languages"] = languages_from_text(j.get("description", ""))
     seen = {k: v for k, v in seen.items() if v >= cutoff[:10]}
+    # Board summary: public posting data only (title, employer, place, verdict), never profile content.
+    for j in sorted(jobs, key=lambda x: (x["match"]["status"] != "match", -x["match"]["score"])):
+        mm = j["match"]
+        log(f"  board {mm['status']:5} {mm['score']:3} | {j['title'][:90]} | {j['org'][:50]} | {j['location'][:40]}"
+            f" | {mm.get('role', '')} | {', '.join(mm.get('notes') or [])}")
     STATE.parent.mkdir(exist_ok=True)
     STATE.write_text(json.dumps({"version": 1, "updated": now.isoformat(), "jobs": jobs, "seen": seen,
                                  "last_run": {"collected": len(collected), "new": len(fresh), **counts,

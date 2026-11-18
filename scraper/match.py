@@ -117,7 +117,9 @@ class Matcher:
             self.claude = anthropic.Anthropic()
         if self.provider == "gemini" and os.environ.get("GEMINI_API_KEY"):
             from google import genai
-            self.client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+            from google.genai import types
+            self.client = genai.Client(api_key=os.environ["GEMINI_API_KEY"],
+                                       http_options=types.HttpOptions(timeout=90_000))
         elif self.claude:
             self.provider = "claude"
             self.client = self.claude
@@ -204,7 +206,7 @@ class Matcher:
         while self.gemini_models:
             model = self.gemini_models[0]
             last = ""
-            for attempt in range(4):
+            for attempt in range(3):
                 try:
                     resp = self.client.models.generate_content(
                         model=model,
@@ -234,8 +236,8 @@ class Matcher:
                             break
                         time.sleep(20)
                         continue
-                    if "503" in msg or "UNAVAILABLE" in msg or "500" in msg:
-                        time.sleep(10 * (attempt + 1))
+                    if "503" in msg or "UNAVAILABLE" in msg or "500" in msg or "timed out" in msg.lower():
+                        time.sleep(8 * (attempt + 1))
                         continue
                     log(f"  Gemini check failed ({last})")
                     return None

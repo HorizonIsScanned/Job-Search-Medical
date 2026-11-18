@@ -75,14 +75,15 @@ def job_from_posting(p: dict, url: str, source: str, default_org: str, default_l
     )
 
 
-async def _crawl(crawler, url: str):
+async def _crawl(crawler, url: str, js: bool = False):
     from crawl4ai import CacheMode, CrawlerRunConfig
 
     cfg = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
         page_timeout=45000,
-        wait_until="domcontentloaded",
-        delay_before_return_html=2.0,
+        wait_until="networkidle" if js else "domcontentloaded",
+        delay_before_return_html=5.0 if js else 2.0,
+        scan_full_page=js,
         check_robots_txt=True,
         excluded_tags=["nav", "footer", "header", "aside"],
         word_count_threshold=5,
@@ -116,7 +117,7 @@ async def _run(sites: list[dict], is_wanted, known_ids: set[str], max_details: i
         for site in sites:
             name = site["name"]
             try:
-                res = await _crawl(crawler, site["url"])
+                res = await _crawl(crawler, site["url"], bool(site.get("js")))
             except Exception as e:  # noqa: BLE001
                 log(f"  {name}: listing failed ({type(e).__name__}: {str(e)[:100]})")
                 report.source("Karriereseiten", name, site["url"], 0, "failed", f"{type(e).__name__}: {str(e)[:100]}")

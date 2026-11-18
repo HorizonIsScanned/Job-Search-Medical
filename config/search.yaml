@@ -223,99 +223,31 @@ sites:
     link_pattern: /jobs/\d+
   # Not included: Berlin Institute of Health (Cloudflare bot check) and ICON (robots.txt forbids crawling).
   # Their German postings still arrive through the Bundesagentur and job boards.
-  - name: DZNE
-    js: true
-    url: https://www.dzne.de/en/career/job-offers/
-    link_pattern: /job-offers/|/stellenangebote/|jobs
   - name: Max-Planck-Gesellschaft
     url: https://www.mpg.de/stellenboerse
     link_pattern: /stellenboerse/|/\d{6,}/
-  - name: Helmholtz
-    js: true
-    url: https://www.helmholtz.de/karriere/stellenangebote/
-    link_pattern: /stellenangebote/|/job/|/jobs/
   - name: Ärzteblatt
     url: https://aerztestellen.aerzteblatt.de/de/stellen/forschung
     link_pattern: /de/stelle/
-  - name: Helios
-    js: true
-    url: https://www.helios-gesundheit.de/karriere/stellenangebote/?q=studienkoordination
-    link_pattern: /stellenangebote/|/job/
-  - name: academics
-    js: true
-    url: https://www.academics.de/jobs/wissenschaftlicher-mitarbeiter-medizin
-    link_pattern: /jobs/.+-\d+
-  - name: academics
-    js: true
-    url: https://www.academics.de/jobs/epidemiologie
-    link_pattern: /jobs/.+-\d+
-  - name: academics
-    js: true
-    url: https://www.academics.de/jobs/studienassistenz
-    link_pattern: /jobs/.+-\d+
-  - name: academics
-    js: true
-    url: https://www.academics.de/jobs/doktorand-medizin
-    link_pattern: /jobs/.+-\d+
-  - name: academics
-    js: true
-    url: https://www.academics.de/jobs/public-health
-    link_pattern: /jobs/.+-\d+
   # Research institutes (epidemiology, public health, nutrition, clinical research)
-  - name: Robert Koch-Institut
-    js: true
-    url: https://www.rki.de/DE/Institut/Stellenangebote/stellenangebote_node.html
-    link_pattern: /Stellenangebote/.+\.html
-    location: Berlin
   - name: DIfE Potsdam
-    js: true
     url: https://www.dife.de/karriere/stellenangebote/
-    link_pattern: /stellenangebote/.+
+    link_pattern: dife\.de/(?!karriere|news|ueber-uns|en/|impressum|datenschutz|forschung|service)[a-z0-9-]+(/[a-z/-]*)?/$
     location: Potsdam
-  - name: DRFZ Berlin
-    js: true
-    url: https://www.drfz.de/jobs-am-drfz/
-    link_pattern: /stellenangebote/.+|/karriere/.+
-    location: Berlin
-  - name: MDC Berlin
-    js: true
-    url: https://www.mdc-berlin.de/de/karriere/stellenangebote
-    link_pattern: /stellenangebote/.+|/jobs/.+|/career/.+
-    location: Berlin
-  # Universities and university hospitals
+  # Universities. Not included because their lists load in a way the crawler cannot read:
+  # academics, ZEIT, HU, RKI, MDC, DRFZ, UKE, LMU, MedUni Wien, DZNE, Helmholtz, Helios.
+  # Their postings mostly reach the Bundesagentur feed anyway.
   - name: FU Berlin
     url: https://www.fu-berlin.de/universitaet/beruf-karriere/jobs/index.html
     link_pattern: /jobs/.+
     location: Berlin
-  - name: HU Berlin
-    js: true
-    url: https://www.hu-berlin.de/de/stellenangebote
-    link_pattern: /stellenangebote/.+
-    location: Berlin
-  - name: UKE Hamburg
-    js: true
-    url: https://www.uke.de/karriere/stellenangebote/index.html
-    link_pattern: /stellenangebote/.+|/stellenangebot/|/job/
-    location: Hamburg
-  - name: LMU Klinikum
-    js: true
-    url: https://www.lmu-klinikum.de/karriere/stellenangebote
-    link_pattern: /stellenangebote/.+|/job/
-    location: München
-  - name: Universität Wien
-    js: true
-    url: https://jobs.univie.ac.at/
-    link_pattern: /job/.+
+  - name: Universität Wien (Praedoc)
+    url: https://jobs.univie.ac.at/go/Praedoc/8877001/
+    link_pattern: /job/.+/\d+/
+  - name: Universität Wien (Berufsstart)
+    url: https://jobs.univie.ac.at/go/Studienbegleitend-&-Berufsstart/8877401/
+    link_pattern: /job/.+/\d+/
     location: Wien
-  - name: MedUni Wien
-    js: true
-    url: https://www.meduniwien.ac.at/web/karriere/stellenangebote/
-    link_pattern: /stellenangebote/.+|/job/
-    location: Wien
-  - name: ZEIT Stellenmarkt Wissenschaft
-    js: true
-    url: https://jobs.zeit.de/stellenangebote/wissenschaft-forschung
-    link_pattern: /stellenangebote/.+-\d+|/job/
 
 # Applicant tracking systems with public JSON/XML feeds. Unverified entries
 # are skipped with a warning if the feed does not answer.

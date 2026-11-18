@@ -34,6 +34,19 @@ def load_state() -> dict:
     return {"version": 1, "jobs": [], "seen": {}}
 
 
+def now_day() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def matcher_loc_ok(cfg: dict, entry: dict) -> bool:
+    """Re-apply the place rule to stored board entries (rules can get stricter)."""
+    m = Matcher.__new__(Matcher)
+    m.loc_aliases = [a.lower() for loc in cfg["locations"] for a in loc["aliases"]]
+    m.remote_words = [w.lower() for w in cfg.get("remote_words", [])]
+    return m.location_ok(Job(title=entry.get("title", ""), org="", location=entry.get("location", ""),
+                             url=entry.get("url", ""), source="", remote=bool(entry.get("remote"))))
+
+
 def main() -> int:
     cfg = yaml.safe_load((ROOT / "config" / "search.yaml").read_text())
     only = set(filter(None, os.environ.get("ONLY_SOURCES", "").split(",")))
@@ -43,8 +56,12 @@ def main() -> int:
         log(f"fresh start: clearing {len(state['jobs'])} board entries and {len(state['seen'])} seen ids")
         state = {**state, "jobs": [], "seen": {}}
     # Entries that could not be checked (model overloaded) leave the board and are collected and checked again.
-    state["jobs"] = [j for j in state["jobs"]
-                     if not j["match"].get("summary", "").startswith("Nicht automatisch geprüft") or not j.get("description")]
+    # Entries without a requirement check (no description) are dropped for good: nothing to verify against the CV.
+    unchecked = [j for j in state["jobs"] if j["match"].get("summary", "").startswith("Nicht automatisch geprüft")]
+    for j in unchecked:
+        if not j.get("description"):
+            state["seen"][j["id"]] = now_day()
+    state["jobs"] = [j for j in state["jobs"] if j not in unchecked and matcher_loc_ok(cfg, j)]
     first_run = not state["jobs"] and not state["seen"]
     now = datetime.now(timezone.utc)
     today = now.date().isoformat()
@@ -154,7 +171,11 @@ def main() -> int:
             deferred += 1  # not recorded: checked again on the next run
             note(j, "deferred", "Gemini-Tageskontingent aufgebraucht, nächster Lauf")
             continue
-        result = matcher.check(j) if j.description else None
+        if not j.description:
+            seen[j.id] = today  # nothing to check the requirements against: never shown
+            note(j, "text", "keine Beschreibung, Anforderungen nicht prüfbar")
+            continue
+        result = matcher.check(j)
         if result is None and j.description and matcher.client:
             deferred += 1  # quota used up or model overloaded: not recorded, checked again next run
             note(j, "deferred", "Gemini-Tageskontingent aufgebraucht, nächster Lauf" if matcher.exhausted

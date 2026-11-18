@@ -150,7 +150,10 @@ class Matcher:
     def location_ok(self, job: Job) -> bool:
         loc = f"{job.location} {job.title}".lower()
         if job.remote or any(w in loc for w in self.remote_words):
-            return True
+            # Remote only counts when it is not tied to another country ("USA-Remote", "Remote Australia").
+            where = job.location.lower()
+            return not where or bool(re.search(HOME_COUNTRIES, where)) or any(a in where for a in self.loc_aliases) \
+                or not re.search(r"[a-z]{3,}", re.sub(r"remote|homeoffice|home office|mobiles arbeiten|[-,/()]", " ", where))
         if not job.location:
             return True  # unknown: let the requirement check decide, flagged later
         return any(a in loc for a in self.loc_aliases)
@@ -335,6 +338,7 @@ def languages_from_text(text: str) -> list[dict]:
     return out
 
 
+HOME_COUNTRIES = r"\b(germany|deutschland|deu|de|austria|österreich|aut|switzerland|schweiz|che|dach|europe|europa|emea|eu)\b"
 LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2", "native"]
 ROLE_LABELS = {"phd": "Promotion / PhD", "study_assistant": "Studienassistenz / Studienkoordination",
                "research_assistant": "Research Assistant / wiss. Hilfskraft", "physician": "ärztliche Tätigkeit",

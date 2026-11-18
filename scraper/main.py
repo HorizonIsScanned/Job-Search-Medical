@@ -46,7 +46,7 @@ def matcher_loc_ok(cfg: dict, entry: dict) -> bool:
     m.remote_words = [w.lower() for w in cfg.get("remote_words", [])]
     return m.location_ok(Job(title=entry.get("title", ""), org="", location=entry.get("location", ""),
                              url=entry.get("url", ""), source="",
-                             remote=bool(entry["match"].get("fully_remote", entry.get("remote")))))
+                             remote=bool(entry["match"].get("fully_remote", False if "role" in entry["match"] else entry.get("remote")))))
 
 
 def main() -> int:

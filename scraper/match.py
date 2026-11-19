@@ -167,7 +167,7 @@ class Matcher:
 
     def has_place(self, text: str) -> bool:
         """True if one of the configured places appears as a whole word ("langen" must not match "Erlangen")."""
-        t = text.lower()
+        t = re.sub(r"frankfurt\s*(an der oder|\(oder\)|/oder|oder)", " ", text.lower())  # not Frankfurt am Main
         return any(re.search(rf"(?<![a-zäöüß]){re.escape(a)}(?![a-zäöüß])", t) for a in self.loc_aliases)
 
     def location_ok(self, job: Job) -> bool:

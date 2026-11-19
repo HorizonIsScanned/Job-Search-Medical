@@ -10,6 +10,7 @@ type Cfg = {
   locations: { name: string; aliases: string[] }[];
   remote_words: string[];
   queries: string[];
+  streams?: { bridge?: { label: string; queries: string[]; jobspy_queries?: string[]; rules: { allowed_roles: string[]; max_years_experience: number } } };
   topics: Record<string, Topic>;
   exclude_title: string[];
   exclude_text: string[];
@@ -29,6 +30,17 @@ const ROLE_NAMES: Record<string, string> = {
   phd: 'Promotion / PhD',
   study_assistant: 'Studienassistenz, Clinical Trial Assistant, Study Coordinator',
   research_assistant: 'Research Assistant und wissenschaftliche Hilfskraft',
+};
+
+const BRIDGE_ROLES: Record<string, string> = {
+  study_assistant: 'Studienassistenz',
+  research_assistant: 'Research Assistant',
+  lab_assistant: 'Laborassistenz und Laborhilfe',
+  care_assistant: 'Pflegehilfe und Betreuung',
+  patient_service: 'Patientenservice und Aufnahme',
+  admin_documentation: 'Medizinische Dokumentation und Verwaltung',
+  health_startup: 'Health-Startups und MedTech',
+  medical_writing_info: 'Medical Writing und Information',
 };
 
 export default function Suchprofil() {
@@ -145,6 +157,28 @@ export default function Suchprofil() {
           <span key={q} className={`chip${cfg.jobspy.queries.includes(q) ? ' lang' : ''}`}>{q}</span>
         ))}
       </div>
+
+      {cfg.streams?.bridge ? (
+        <>
+          <h2>Zweiter Stream: {cfg.streams.bridge.label}</h2>
+          <p className="section-lede">
+            Bezahlte Jobs bis zur Approbation. Jede Anzeige wird einmal geprüft: Erfüllt sie die strengen Regeln oben, steht sie unter Forschung &amp; PhD.
+            Sonst kommt sie hierher, wenn diese Regeln passen.
+          </p>
+          <div className="group">
+            <div className="rule"><span className="pill match">Rollen</span><span>{cfg.streams.bridge.rules.allowed_roles.map((r) => BRIDGE_ROLES[r] ?? r).join(', ')}.</span></div>
+            <div className="rule"><span className="pill reject">Erfahrung</span><span>Höchstens {cfg.streams.bridge.rules.max_years_experience} Jahr Berufserfahrung gefordert.</span></div>
+            <div className="rule"><span className="pill reject">Ausbildung</span><span>Keine Stellen, die eine abgeschlossene Ausbildung verlangen (Pflegefachkraft, MFA, MTA, Laborant).</span></div>
+            <div className="rule"><span className="pill reject">Bezahlt</span><span>Keine Praktika, kein Ehrenamt, keine Jobs nur für Eingeschriebene.</span></div>
+            <div className="rule"><span className="pill reject">Wie oben</span><span>Deutsch höchstens B2, keine Approbation, keine Zellkultur, Ort aus der Liste, keine abgelaufene Frist.</span></div>
+          </div>
+          <div className="chips" style={{ marginTop: 14 }}>
+            {[...new Set([...cfg.streams.bridge.queries, ...(cfg.streams.bridge.jobspy_queries ?? [])])].map((q) => (
+              <span key={q} className="chip">{q}</span>
+            ))}
+          </div>
+        </>
+      ) : null}
 
       <h2>Orte</h2>
       <p className="section-lede">Eine Stelle muss an einem dieser Orte liegen oder remote möglich sein.</p>

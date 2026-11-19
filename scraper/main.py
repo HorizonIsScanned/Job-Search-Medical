@@ -247,6 +247,14 @@ def main() -> int:
     })
     RUNS.write_text(json.dumps(runs[:KEEP_RUNS], ensure_ascii=False))
 
+    # Tell the workflow whether a catch-up run is worth it: postings left unchecked
+    # because Gemini was overloaded, the time budget ran out or the check limit was hit.
+    backlog = deferred + max(0, len(kept) - limit)
+    if os.environ.get("GITHUB_OUTPUT"):
+        with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+            f.write(f"backlog={backlog}\nquota_exhausted={'true' if matcher.exhausted else 'false'}\n")
+    log(f"backlog for catch-up: {backlog} (quota exhausted: {matcher.exhausted})")
+
     if os.environ.get("NOTIFY", "1") == "1":
         notify.send_matches(new_entries, cfg)
         if len(failed) > cfg["notify"]["max_failed_sources"]:

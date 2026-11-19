@@ -19,6 +19,10 @@ on:
         description: "Forget earlier verdicts and judge all postings again"
         type: boolean
         default: false
+      catchup_round:
+        description: "Set by the workflow itself: number of this catch-up run (0 = normal run)"
+        type: number
+        default: 0
 
 permissions:
   contents: read
@@ -31,7 +35,7 @@ concurrency:
 jobs:
   search:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 160   # includes the 30-minute wait of catch-up runs
     env:
       BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -46,6 +50,11 @@ jobs:
       NOTIFY: ${{ (github.event_name == 'schedule' || inputs.notify) && '1' || '0' }}
       ONLY_SOURCES: ${{ inputs.only_sources }}
     steps:
+      - name: Wait before catch-up
+        # Gemini overloads usually pass within half an hour.
+        if: inputs.catchup_round > 0
+        run: sleep 1800
+
       - uses: actions/checkout@v4
 
       - name: Personal data check
@@ -73,11 +82,30 @@ jobs:
         run: node scripts/blob.mjs get
 
       - name: Search
+        id: search
         run: python scraper/main.py
 
       - name: Save state
         if: success()
         run: node scripts/blob.mjs put
+
+      - name: Start catch-up run
+        # Postings left unchecked (Gemini overloaded, time budget, check limit) are
+        # checked by up to 3 follow-up runs. If the daily Gemini quota is used up,
+        # the next morning's run picks them up instead.
+        if: >-
+          success() && !inputs.fresh_start
+          && fromJSON(steps.search.outputs.backlog || '0') > 0
+          && steps.search.outputs.quota_exhausted != 'true'
+          && (inputs.catchup_round || 0) < 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREV: ${{ inputs.catchup_round || 0 }}
+        run: |
+          ROUND=$((PREV + 1))
+          echo "backlog ${{ steps.search.outputs.backlog }}, starting catch-up round $ROUND"
+          gh workflow run daily.yml --repo "$GITHUB_REPOSITORY" --ref main \
+            -f notify=true -f only_sources= -f fresh_start=false -f catchup_round="$ROUND"
 
       - name: Alert on failure
         if: failure() && env.NTFY_TOPIC != ''

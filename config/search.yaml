@@ -129,8 +129,10 @@ topics:
 # specialist title, a student status, or is not a medical-knowledge role).
 exclude_title:
   - founder
+  - " coo "
+  - "(coo)"
+  - "/ coo"
   - gründer
-  - coo
   - oberarzt
   - oberärztin
   - chefarzt

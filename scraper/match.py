@@ -165,16 +165,21 @@ class Matcher:
         w = next((w for w in self.excl_text if w in d), "")
         return f"Anzeige verlangt „{w}“"
 
+    def has_place(self, text: str) -> bool:
+        """True if one of the configured places appears as a whole word ("langen" must not match "Erlangen")."""
+        t = text.lower()
+        return any(re.search(rf"(?<![a-zäöüß]){re.escape(a)}(?![a-zäöüß])", t) for a in self.loc_aliases)
+
     def location_ok(self, job: Job) -> bool:
         loc = f"{job.location} {job.title}".lower()
         if job.remote or any(w in loc for w in self.remote_words):
             # Remote only counts when it is not tied to another country ("USA-Remote", "Remote Australia").
             where = job.location.lower()
-            return not where or bool(re.search(HOME_COUNTRIES, where)) or any(a in where for a in self.loc_aliases) \
+            return not where or bool(re.search(HOME_COUNTRIES, where)) or self.has_place(where) \
                 or not re.search(r"[a-z]{3,}", re.sub(r"remote|homeoffice|home office|mobiles arbeiten|[-,/()]", " ", where))
         if not job.location:
             return True  # unknown: let the requirement check decide, flagged later
-        return any(a in loc for a in self.loc_aliases)
+        return self.has_place(loc)
 
     def text_ok(self, job: Job) -> bool:
         d = job.description.lower()
@@ -404,7 +409,7 @@ def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
         common.append(f"Deutsch {LEVELS[german]} verlangt (höchstens {LEVELS[max_german]})")
     if result.get("advanced_lab_skills_required"):
         common.append("Laborarbeit wie Zellkultur oder Molekularbiologie verlangt")
-    if place and not remote and not any(a in place.lower() for a in matcher.loc_aliases):
+    if place and not remote and not matcher.has_place(place):
         common.append(f"Ort passt nicht: {place[:60]}")
     common += [f"Nicht erfüllt: {r.get('text', '')}" for r in unmet if r.get("text")]
 

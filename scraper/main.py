@@ -63,7 +63,9 @@ def main() -> int:
     for j in unchecked:
         if not j.get("description"):
             state["seen"][j["id"]] = now_day()
-    state["jobs"] = [j for j in state["jobs"] if j not in unchecked and matcher_loc_ok(cfg, j)]
+    excl_title = [w.lower() for w in cfg.get("exclude_title", [])]
+    state["jobs"] = [j for j in state["jobs"] if j not in unchecked and matcher_loc_ok(cfg, j)
+                     and not any(w in j.get("title", "").lower() for w in excl_title)]  # rules can get stricter
     first_run = not state["jobs"] and not state["seen"]
     now = datetime.now(timezone.utc)
     today = now.date().isoformat()

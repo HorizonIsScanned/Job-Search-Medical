@@ -7,7 +7,16 @@ const ROLE: Record<string, string> = {
   phd: 'Promotion / PhD',
   study_assistant: 'Studienassistenz / Koordination',
   research_assistant: 'Research Assistant / Hilfskraft',
+  lab_assistant: 'Laborassistenz',
+  care_assistant: 'Pflegehilfe / Betreuung',
+  patient_service: 'Patientenservice',
+  admin_documentation: 'Med. Dokumentation / Verwaltung',
+  health_startup: 'Health-Startup / MedTech',
+  medical_writing_info: 'Medical Writing / Information',
 };
+const STREAM = { research: 'Forschung & PhD', bridge: 'Übergangsjobs' } as const;
+type Stream = keyof typeof STREAM;
+const streamOf = (j: JobEntry): Stream => j.match.stream ?? 'research';
 const KIND = { phd: 'Promotion', job: 'Job', other: 'Sonstiges' } as const;
 const LANG = { de: 'Deutsch', en: 'Englisch', es: 'Spanisch', fr: 'Französisch', other: 'Andere' } as const;
 const RANK: Record<Language['level'], number> = { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, C2: 6, native: 7, unspecified: 0 };
@@ -33,7 +42,11 @@ function germanOk(j: JobEntry, f: GermanFilter): boolean {
   return !de || (de.level !== 'unspecified' && RANK[de.level] <= max);
 }
 
-export default function Board({ jobs, updated }: { jobs: JobEntry[]; updated: string }) {
+export default function Board({ jobs: allJobs, updated }: { jobs: JobEntry[]; updated: string }) {
+  const [stream, setStream] = useState<Stream>('research');
+  const [area, setArea] = useState('all');
+  const jobs = allJobs.filter((j) => streamOf(j) === stream);
+  const areas = Array.from(new Set(jobs.map((j) => j.match.role ?? '').filter(Boolean)));
   const [tab, setTab] = useState<'match' | 'check' | 'all'>('match');
   const [german, setGerman] = useState<GermanFilter>('all');
   const [kind, setKind] = useState<'all' | 'phd' | 'job'>('all');
@@ -47,6 +60,7 @@ export default function Board({ jobs, updated }: { jobs: JobEntry[]; updated: st
     .filter((j) => tab === 'all' || j.match.status === tab)
     .filter((j) => germanOk(j, german))
     .filter((j) => kind === 'all' || j.match.kind === kind)
+    .filter((j) => area === 'all' || j.match.role === area)
     .filter((j) => topic === 'all' || j.match.topics.includes(topic))
     .filter((j) => !q || `${j.title} ${j.org} ${j.location}`.toLowerCase().includes(q.toLowerCase()))
     .sort((a, b) => b.match.score - a.match.score || b.first_seen.localeCompare(a.first_seen));
@@ -55,6 +69,18 @@ export default function Board({ jobs, updated }: { jobs: JobEntry[]; updated: st
 
   return (
     <>
+      <div className="streams" role="tablist" aria-label="Stream">
+        {(Object.keys(STREAM) as Stream[]).map((s) => (
+          <button key={s} role="tab" aria-selected={stream === s} onClick={() => { setStream(s); setArea('all'); }}>
+            {STREAM[s]} <span className="count">{allJobs.filter((j) => streamOf(j) === s).length}</span>
+          </button>
+        ))}
+      </div>
+      <p className="hint">
+        {stream === 'research'
+          ? 'PhD, wissenschaftliche Mitarbeit und Studienassistenz an Unis, Instituten und CROs. Strenge Regeln.'
+          : 'Bezahlte Jobs bis zur Approbation, bei denen ein medizinisches Profil gesucht wird: Labor, Studien, Pflegehilfe, Patientenservice, Dokumentation, Health-Startups.'}
+      </p>
       <div className="segmented" role="tablist" aria-label="Ansicht">
         <button role="tab" aria-selected={tab === 'match'} onClick={() => setTab('match')}>
           Passt <span className="count">{count('match')}</span>
@@ -74,10 +100,18 @@ export default function Board({ jobs, updated }: { jobs: JobEntry[]; updated: st
           : 'Mindestens eine Pflichtanforderung ist unklar (z. B. „gute Deutschkenntnisse“), keine Teilzeit oder Ort unbekannt. Bitte selbst prüfen.'}
       </p>
       <div className="filters">
-        <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} aria-label="Art">
-          <option value="all">Promotion und Job</option>
-          <option value="phd">Nur Promotion</option>
-          <option value="job">Nur Job</option>
+        {stream === 'research' ? (
+          <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} aria-label="Art">
+            <option value="all">Promotion und Job</option>
+            <option value="phd">Nur Promotion</option>
+            <option value="job">Nur Job</option>
+          </select>
+        ) : null}
+        <select value={area} onChange={(e) => setArea(e.target.value)} aria-label="Bereich">
+          <option value="all">Alle Bereiche</option>
+          {areas.map((a) => (
+            <option key={a} value={a}>{ROLE[a] ?? a}</option>
+          ))}
         </select>
         <select value={topic} onChange={(e) => setTopic(e.target.value)} aria-label="Thema">
           <option value="all">Alle Themen</option>

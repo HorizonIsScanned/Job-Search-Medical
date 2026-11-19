@@ -53,8 +53,15 @@ SCHEMA = {
         },
         "role_type": {"type": "string",
                       "enum": ["phd", "study_assistant", "research_assistant", "physician", "medical_writing_info",
-                               "monitoring_management", "lab_technical", "other"],
-                      "description": "phd = doctoral position or PhD programme; study_assistant = Studienassistenz, Clinical Trial Assistant, study coordinator, clinical research coordinator; research_assistant = research assistant, wissenschaftliche Hilfskraft, junior wissenschaftliche Mitarbeiterin in a research project; physician = treats patients as a doctor; medical_writing_info = medical writing, information, affairs, pharmacovigilance; monitoring_management = CRA/monitor, project or study manager, lead roles; lab_technical = bench lab work, technician; other = anything else"},
+                               "monitoring_management", "lab_technical", "lab_assistant", "care_assistant",
+                               "patient_service", "admin_documentation", "health_startup", "other"],
+                      "description": "phd = doctoral position or PhD programme; study_assistant = Studienassistenz, Clinical Trial Assistant, study coordinator, clinical research coordinator; research_assistant = research assistant, wissenschaftliche Hilfskraft, junior wissenschaftliche Mitarbeiterin in a research project; physician = treats patients as a doctor; medical_writing_info = medical writing, information, affairs, pharmacovigilance; monitoring_management = CRA/monitor, project or study manager, lead roles; lab_technical = skilled bench lab work for trained technicians or scientists; lab_assistant = simple lab help (Laborhilfe, Laborassistenz, Probenannahme, sample logistics); care_assistant = care help without completed nursing training (Pflegehilfe, Pflegeassistenz for career changers, Betreuung); patient_service = patient reception, admission, patient guidance, call centre for patients; admin_documentation = medical documentation, coding, medical office or study administration; health_startup = non-clinical role at a health or medtech company that uses medical knowledge (medical content, support, operations, data annotation); other = anything else"},
+        "needs_vocational_qualification": {"type": "boolean",
+                                           "description": "true if a completed vocational training or state exam other than medicine is mandatory (e.g. Pflegefachkraft, MFA, MTA/MTL, Laborant, PTA, Rettungssanitäter)"},
+        "paid": {"type": "string", "enum": ["yes", "no", "unclear"],
+                 "description": "no = internship, volunteer work, or a student job that requires university enrolment"},
+        "transition_score": {"type": "integer",
+                             "description": "0-100: as a paid job until her medical licence, how much medical knowledge it uses and how realistic it is for the candidate to get it"},
         "min_years_experience": {"type": "number",
                                  "description": "Minimum years of professional experience the posting explicitly REQUIRES. 0 if no number of years is required, or if it only asks for first experience or calls experience desirable."},
         "advanced_lab_skills_required": {"type": "boolean",
@@ -71,7 +78,7 @@ SCHEMA = {
         "summary": {"type": "string", "description": "One German sentence: what the role is and why it fits or not. Do not repeat personal details of the candidate."},
     },
     "required": ["kind", "role_type", "requirements", "languages", "needs_medical_license", "min_years_experience",
-                 "advanced_lab_skills_required", "closed", "deadline", "work_location", "fully_remote", "field_fit",
+                 "advanced_lab_skills_required", "needs_vocational_qualification", "paid", "transition_score", "closed", "deadline", "work_location", "fully_remote", "field_fit",
                  "part_time_possible", "topic", "fit_score", "summary"],
     "additionalProperties": False,
 }
@@ -94,6 +101,17 @@ Write requirement texts and the summary in German.
 </candidate_profile>"""
 
 
+def all_queries(cfg: dict) -> list[str]:
+    """Search terms of every stream, for the job boards."""
+    extra = [q for st in (cfg.get("streams") or {}).values() for q in st.get("queries", [])]
+    return list(dict.fromkeys(cfg.get("queries", []) + extra))
+
+
+def all_jobspy_queries(cfg: dict) -> list[str]:
+    extra = [q for st in (cfg.get("streams") or {}).values() for q in st.get("jobspy_queries", [])]
+    return list(dict.fromkeys(cfg["jobspy"].get("queries", []) + extra))
+
+
 class Matcher:
     def __init__(self, cfg: dict):
         self.cfg = cfg
@@ -101,7 +119,7 @@ class Matcher:
         self.excl_title = [w.lower() for w in cfg.get("exclude_title", [])]
         self.excl_text = [w.lower() for w in cfg.get("exclude_text", [])]
         self.topics = cfg["topics"]
-        self.queries = [q.lower() for q in cfg.get("queries", [])]
+        self.queries = [q.lower() for q in all_queries(cfg)]
         self.loc_aliases = [a.lower() for loc in cfg["locations"] for a in loc["aliases"]]
         self.remote_words = [w.lower() for w in cfg.get("remote_words", [])]
         profile = os.environ.get("PROFILE_JSON", "")
@@ -343,14 +361,17 @@ LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2", "native"]
 ROLE_LABELS = {"phd": "Promotion / PhD", "study_assistant": "Studienassistenz / Studienkoordination",
                "research_assistant": "Research Assistant / wiss. Hilfskraft", "physician": "ärztliche Tätigkeit",
                "medical_writing_info": "Medical Writing / Information", "monitoring_management": "Monitoring / Management",
-               "lab_technical": "Labor / Technik", "other": "andere Rolle"}
+               "lab_technical": "Labor / Technik", "lab_assistant": "Laborassistenz / Laborhilfe",
+               "care_assistant": "Pflegehilfe / Betreuung", "patient_service": "Patientenservice / Aufnahme",
+               "admin_documentation": "Medizinische Dokumentation / Verwaltung",
+               "health_startup": "Health-Startup / MedTech", "other": "andere Rolle"}
 
 
 def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
     """Turn the Claude result into board status: match / check / reject."""
     hits = matcher.topic_hits(job)
     topics = [matcher.topics[k]["label"] for k in sorted(hits, key=lambda k: -matcher.topics[k]["weight"])
-              if k != "medical"]  # the broad catch-all topic only feeds the prefilter
+              if k not in ("medical", "bridge")]  # broad catch-all topics only feed the prefilter
     if result is None:
         return {"status": "check", "score": min(60, matcher.prefilter_score(job)), "topics": topics,
                 "summary": "Nicht automatisch geprüft (keine Beschreibung oder Prüfung fehlgeschlagen).",
@@ -372,27 +393,45 @@ def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
     place = result.get("work_location") or job.location
     remote = bool(result.get("fully_remote"))  # from the text; board "remote" flags are unreliable
     reasons = []
-    hard = []  # reasons that rule a posting out, in the order shown
+    common = []  # rules out a posting for every stream
     if kind == "other":
-        hard.append("keine Stellenanzeige (z. B. Kurs, Veranstaltung, Übersicht)")
+        common.append("keine Stellenanzeige (z. B. Kurs, Veranstaltung, Übersicht)")
     if result.get("closed") or (re.fullmatch(r"\d{4}-\d{2}-\d{2}", deadline) and deadline < TODAY):
-        hard.append("Bewerbung nicht mehr möglich" + (f" (Frist {deadline})" if deadline else ""))
+        common.append("Bewerbung nicht mehr möglich" + (f" (Frist {deadline})" if deadline else ""))
     if result.get("needs_medical_license"):
-        hard.append("Approbation oder Facharzttitel nötig")
+        common.append("Approbation oder Facharzttitel nötig")
     if german > max_german:
-        hard.append(f"Deutsch {LEVELS[german]} verlangt (höchstens {LEVELS[max_german]})")
-    if years > rules.get("max_years_experience", 0):
-        hard.append(f"{years:g} Jahre Berufserfahrung verlangt")
+        common.append(f"Deutsch {LEVELS[german]} verlangt (höchstens {LEVELS[max_german]})")
     if result.get("advanced_lab_skills_required"):
-        hard.append("Laborarbeit wie Zellkultur oder Molekularbiologie verlangt")
-    allowed = rules.get("allowed_roles") or list(ROLE_LABELS)
-    if kind != "other" and role not in allowed:
-        hard.append(f"Rolle passt nicht: {ROLE_LABELS.get(role, role)}")
-    if result.get("field_fit") == "distant":
-        hard.append("Fachgebiet zu weit von ihrer Erfahrung entfernt")
+        common.append("Laborarbeit wie Zellkultur oder Molekularbiologie verlangt")
     if place and not remote and not any(a in place.lower() for a in matcher.loc_aliases):
-        hard.append(f"Ort passt nicht: {place[:60]}")
-    hard += [f"Nicht erfüllt: {r.get('text', '')}" for r in unmet if r.get("text")]
+        common.append(f"Ort passt nicht: {place[:60]}")
+    common += [f"Nicht erfüllt: {r.get('text', '')}" for r in unmet if r.get("text")]
+
+    def stream_rules(srules: dict, research: bool) -> list[str]:
+        out = []
+        if years > srules.get("max_years_experience", 0):
+            out.append(f"{years:g} Jahre Berufserfahrung verlangt")
+        if role not in (srules.get("allowed_roles") or list(ROLE_LABELS)):
+            out.append(f"Rolle passt nicht: {ROLE_LABELS.get(role, role)}")
+        if research and result.get("field_fit") == "distant":
+            out.append("Fachgebiet zu weit von ihrer Erfahrung entfernt")
+        if not research and result.get("needs_vocational_qualification"):
+            out.append("abgeschlossene Ausbildung verlangt (z. B. Pflegefachkraft, MFA, MTA)")
+        if not research and result.get("paid") == "no":
+            out.append("unbezahlt, Praktikum oder nur für Studierende")
+        return out
+
+    research_hard = stream_rules(rules, True)
+    bridge_rules = matcher.cfg.get("streams", {}).get("bridge", {}).get("rules")
+    bridge_hard = stream_rules(bridge_rules, False) if bridge_rules else ["Stream aus"]
+    stream = "research"
+    if research_hard and not bridge_hard:
+        stream = "bridge"
+        score = int(result.get("transition_score") or score)
+    hard = common + (research_hard if stream == "research" else [])
+    if research_hard and bridge_hard:
+        hard = common + research_hard + [f"Übergangsjob: {x}" for x in bridge_hard if x not in research_hard]
     reject_reason = "; ".join(hard)
     if hard:
         status = "reject"
@@ -422,6 +461,7 @@ def decide(job: Job, result: dict | None, matcher: Matcher) -> dict:
         "requirements": reqs,
         "languages": languages,
         "role": role,
+        "stream": stream,
         "fully_remote": remote,
         "field_fit": result.get("field_fit", ""),
         "years": years,

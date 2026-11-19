@@ -18,7 +18,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent))
 
 from common import Job, log  # noqa: E402
-from match import Matcher, decide, languages_from_text  # noqa: E402
+from match import Matcher, all_jobspy_queries, all_queries, decide, languages_from_text  # noqa: E402
 import notify  # noqa: E402
 import report  # noqa: E402
 from sources import ats, bundesagentur, jobspy_boards, sites  # noqa: E402
@@ -99,11 +99,13 @@ def main() -> int:
             log(f"  source failed ({type(e).__name__}: {str(e)[:120]})")
             failed.append(name)
 
+    cro_queries = list(cfg["jobspy"]["queries"])  # CRO feeds: research terms only
+    cfg["jobspy"]["queries"] = all_jobspy_queries(cfg)
     if cfg["bundesagentur"]["enabled"]:
-        run("bundesagentur", lambda: bundesagentur.fetch(cfg, cfg["queries"], first_run))
+        run("bundesagentur", lambda: bundesagentur.fetch(cfg, all_queries(cfg), first_run))
     if cfg["jobspy"]["enabled"]:
         run("jobspy", lambda: jobspy_boards.fetch(cfg))
-    run("ats", lambda: ats.fetch(cfg, cfg["jobspy"]["queries"]))
+    run("ats", lambda: ats.fetch(cfg, cro_queries))
     run("sites", lambda: sites.fetch(cfg, matcher.is_wanted, known))
 
     # Dedup: by URL id, and by title+organisation across boards.
@@ -152,6 +154,11 @@ def main() -> int:
         # Job titles and places only (public posting data, no profile content).
         log(f"  dropped for {why}: {len(titles)}; e.g. {titles[:12]}")
     kept.sort(key=matcher.prefilter_score, reverse=True)
+    # Pool for the local model on the laptop: public posting data only.
+    (ROOT / "data").mkdir(exist_ok=True)
+    (ROOT / "data" / "pool.json").write_text(json.dumps(
+        {"created": now.isoformat(), "jobs": [{**j.to_dict(), "description": j.description[:14000]} for j in kept]},
+        ensure_ascii=False))
     limit = cfg["matching"]["max_llm_checks_per_run"]
     log(f"rules dropped {dropped}, checking {min(len(kept), limit)} of {len(kept)}")
 

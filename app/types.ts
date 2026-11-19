@@ -16,6 +16,7 @@ export type Match = {
   languages?: Language[];
   notes?: string[];
   role?: string;
+  stream?: 'research' | 'bridge';
   field_fit?: 'core' | 'related' | 'distant' | '';
   years?: number;
   deadline?: string;

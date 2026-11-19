@@ -54,6 +54,42 @@ queries:
   - Geburtshilfe Studie
   - Spanish speaking clinical research
 
+# Second stream: paid transition jobs until the medical licence ("Übergangsjobs").
+# Same collection and the same single LLM check per posting; a posting that fails the
+# research rules but passes these lands in this stream.
+streams:
+  bridge:
+    label: Übergangsjobs
+    queries:
+      - Laborassistenz
+      - Laborhilfe
+      - Probenannahme Labor
+      - Studienassistenz Quereinsteiger
+      - Medizinische Dokumentation
+      - Medizinischer Dokumentar
+      - Kodierfachkraft
+      - Patientenservice
+      - Patientenaufnahme
+      - Pflegehilfe
+      - Pflegeassistenz Quereinsteiger
+      - Betreuungskraft Klinik
+      - Quereinsteiger Medizin
+      - Medical Content
+      - Customer Success Health
+      - Telemedizin
+      - Spanisch medizinisch
+    jobspy_queries:
+      - Laborassistenz
+      - Medizinische Dokumentation
+      - Patientenservice Klinik
+      - Pflegehilfe Quereinsteiger
+      - medical background startup
+      - Spanish speaking healthcare
+    rules:
+      allowed_roles: [study_assistant, research_assistant, lab_assistant, care_assistant, patient_service,
+                      admin_documentation, health_startup, medical_writing_info]
+      max_years_experience: 1
+
 # Topics and weights for the score (0-100 is computed from these + the requirement check).
 topics:
   womens_health:
@@ -80,6 +116,10 @@ topics:
     label: Epidemiologie & Prävention
     weight: 30
     words: [epidemiolog, public health, prävention, praevention, prevention, preventive, gesundheitsförderung, versorgungsforschung, health services research, kohorte, cohort, bevölkerungs, population health, global health, impfung, vaccin, infektionsepidemiolog]
+  bridge:
+    label: Übergangsjob-Bereich
+    weight: 5
+    words: [labor, laborhilfe, laborassist, probenannahme, pflegehilfe, pflegeassist, betreuung, patientenservice, patientenaufnahme, dokumentation, kodier, telemedizin, healthtech, digital health, medtech, quereinst, praxis, klinik]
   research:
     label: Klinische Forschung
     weight: 10

@@ -28,6 +28,24 @@ def _send(title: str, body: str, *, priority: str = "default", click: str = "", 
 
 
 def send_matches(new: list[dict], cfg: dict) -> None:
+    send_research([j for j in new if j["match"].get("stream", "research") == "research"], cfg)
+    send_bridge([j for j in new if j["match"].get("stream") == "bridge"], cfg)
+
+
+def send_bridge(new: list[dict], cfg: dict) -> None:
+    """One summary push per run for the transition stream, so the phone does not ring all day."""
+    hits = sorted([j for j in new if j["match"]["status"] == "match"], key=lambda j: -j["match"]["score"])
+    if not hits:
+        log("ntfy: no new transition jobs")
+        return
+    lines = [f"- **{j['title']}** · {j['org']}" for j in hits[:5]]
+    if len(hits) > 5:
+        lines.append(f"\n… und {len(hits) - 5} weitere auf dem Board.")
+    _send(f"{len(hits)} neue Übergangsjob{'s' if len(hits) != 1 else ''}", "\n".join(lines),
+          click=os.environ.get("BOARD_URL", ""), tags="briefcase")
+
+
+def send_research(new: list[dict], cfg: dict) -> None:
     ncfg = cfg["notify"]
     hits = sorted([j for j in new if j["match"]["status"] == "match" and j["match"]["score"] >= ncfg["min_score"]],
                   key=lambda j: -j["match"]["score"])

@@ -6,6 +6,8 @@ import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 const FILES = [
   { local: 'data/state.json', remote: 'board/state.json', backup: true },
   { local: 'data/runs.json', remote: 'board/runs.json', backup: false },
+  // Every posting that passed the cheap rules in the last run, with full text, for the laptop's local model.
+  { local: 'data/pool.json', remote: 'board/pool.json', backup: false, uploadOnly: true },
 ];
 const cmd = process.argv[2];
 
@@ -18,7 +20,7 @@ if (!process.env.BLOB_READ_WRITE_TOKEN) {
 }
 
 if (cmd === 'get') {
-  for (const f of FILES) {
+  for (const f of FILES.filter((x) => !x.uploadOnly)) {
     // A failed read of the state must stop the run, so it is never overwritten with an empty one.
     const res = f.backup
       ? await get(f.remote, { access: 'private', useCache: false })
